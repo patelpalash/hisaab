@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'firebase_options.dart';
 import 'splash/splash_screen.dart';
 import 'auth/login_page.dart';
@@ -14,10 +15,13 @@ import 'models/category_model.dart';
 import 'providers/auth_provider.dart';
 import 'providers/transaction_provider.dart';
 import 'providers/category_provider.dart';
+import 'providers/budget_provider.dart';
 import 'screens/add_transaction_screen.dart';
 import 'screens/transactions/transactions_list_screen.dart';
 import 'screens/transactions/transaction_detail_screen.dart';
-import 'screens/debug_transaction_page.dart';
+import 'screens/budget/budget_list_screen.dart';
+import 'widgets/financial_summary_chart.dart';
+import 'widgets/app_drawer.dart';
 
 // App theme colors
 final Color primaryColor = Color(0xFF6C63FF); // Main light purple color
@@ -86,24 +90,35 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
+      drawer: AppDrawer(),
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            // Simple App Bar (like in the image)
+            // Modern App Bar with transparent styling
             SliverAppBar(
               floating: true,
               pinned: true,
               backgroundColor: lightPurple,
+              elevation: 0,
               toolbarHeight: 80,
               title: Padding(
                 padding: const EdgeInsets.only(left: 8.0, top: 8.0),
                 child: Text(
                   'Hisaab',
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                  style: GoogleFonts.poppins(
+                    textStyle: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
+                      color: Colors.white,
+                    ),
                   ),
+                ),
+              ),
+              leading: Builder(
+                builder: (context) => IconButton(
+                  icon: Icon(Icons.menu, color: Colors.white, size: 28),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
                 ),
               ),
               actions: [
@@ -140,12 +155,11 @@ class _HomePageState extends State<HomePage> {
                               TextButton(
                                 onPressed: () {
                                   Navigator.pop(context);
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          DebugTransactionPage(
-                                              userId: user.uid),
+                                  // Debug transactions view was removed
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Debug page was removed'),
+                                      duration: Duration(seconds: 2),
                                     ),
                                   );
                                 },
@@ -352,50 +366,15 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
 
-                  // Categories section header with "View All" text
+                  // Financial Summary Chart (replacing Categories)
                   Padding(
                     padding: const EdgeInsets.only(
                         left: 16.0, right: 16.0, top: 24.0, bottom: 12.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Categories',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            // View all categories
-                          },
-                          child: Text(
-                            'View All',
-                            style: TextStyle(
-                              color: lightPurple,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
+                    child: FinancialSummaryChart(
+                      income: totalIncome,
+                      expense: totalExpenses,
+                      balance: balance,
                     ),
-                  ),
-
-                  // Category Grid - similar to the image with rounded squares
-                  Container(
-                    height: 120,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: expenseCategories.isEmpty
-                        ? Center(child: CircularProgressIndicator())
-                        : ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: expenseCategories.length,
-                            itemBuilder: (context, index) {
-                              return _buildCategoryCard(
-                                  expenseCategories[index]);
-                            },
-                          ),
                   ),
 
                   // Recent Transactions section header with "View All" text
@@ -514,6 +493,13 @@ class _HomePageState extends State<HomePage> {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => TransactionsListScreen(),
+              ),
+            );
+          } else if (index == 2) {
+            // Budget tab
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => BudgetListScreen(),
               ),
             );
           }
@@ -870,6 +856,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => TransactionProvider()),
         ChangeNotifierProvider(create: (_) => CategoryProvider()),
+        ChangeNotifierProvider(create: (_) => BudgetProvider()),
       ],
       child: const MyApp(),
     ),
@@ -881,15 +868,64 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Set system UI styling
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.white,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ));
+
     return MaterialApp(
       title: 'Hisaab',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
+        useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
           seedColor: lightPurple,
+          brightness: Brightness.light,
         ),
-        useMaterial3: true,
+        appBarTheme: AppBarTheme(
+          elevation: 0,
+          backgroundColor: lightPurple,
+          centerTitle: false,
+          titleTextStyle: GoogleFonts.poppins(
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+          iconTheme: IconThemeData(color: Colors.white),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: lightPurple,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            textStyle: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        textTheme: GoogleFonts.poppinsTextTheme(
+          Theme.of(context).textTheme,
+        ),
+        cardTheme: CardTheme(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        bottomNavigationBarTheme: BottomNavigationBarThemeData(
+          selectedItemColor: lightPurple,
+          unselectedItemColor: Colors.grey.shade600,
+          type: BottomNavigationBarType.fixed,
+          elevation: 8,
+        ),
       ),
       home: Consumer<AuthProvider>(
         builder: (context, authProvider, _) {

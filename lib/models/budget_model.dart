@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:uuid/uuid.dart';
 
 class BudgetModel {
   final String id;
@@ -57,7 +57,7 @@ class BudgetModel {
     );
   }
 
-  // Convert to map for storage
+  // Convert to map for SQLite storage
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -65,31 +65,32 @@ class BudgetModel {
       'name': name,
       'amount': amount,
       'categoryId': categoryId,
-      'startDate': Timestamp.fromDate(startDate),
-      'endDate': Timestamp.fromDate(endDate),
-      'isRecurring': isRecurring,
+      'startDate': startDate.toIso8601String(),
+      'endDate': endDate.toIso8601String(),
+      'isRecurring': isRecurring ? 1 : 0,
       'recurrenceType': recurrenceType,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt?.toIso8601String(),
     };
   }
 
-  // Create from map
+  // Create from map for SQLite
   factory BudgetModel.fromMap(Map<String, dynamic> map) {
     return BudgetModel(
       id: map['id'],
       userId: map['userId'],
       name: map['name'],
-      amount: map['amount'].toDouble(),
+      amount: map['amount'] is int
+          ? (map['amount'] as int).toDouble()
+          : map['amount'],
       categoryId: map['categoryId'],
-      startDate: (map['startDate'] as Timestamp).toDate(),
-      endDate: (map['endDate'] as Timestamp).toDate(),
-      isRecurring: map['isRecurring'] ?? true,
-      recurrenceType: map['recurrenceType'] ?? 'monthly',
-      createdAt: (map['createdAt'] as Timestamp).toDate(),
-      updatedAt: map['updatedAt'] != null
-          ? (map['updatedAt'] as Timestamp).toDate()
-          : null,
+      startDate: DateTime.parse(map['startDate']),
+      endDate: DateTime.parse(map['endDate']),
+      isRecurring: map['isRecurring'] == 1,
+      recurrenceType: map['recurrenceType'],
+      createdAt: DateTime.parse(map['createdAt']),
+      updatedAt:
+          map['updatedAt'] != null ? DateTime.parse(map['updatedAt']) : null,
     );
   }
 
@@ -100,11 +101,12 @@ class BudgetModel {
     required double amount,
     String? categoryId,
   }) {
-    final String id = FirebaseFirestore.instance.collection('budgets').doc().id;
+    final String id = const Uuid().v4(); // Generate UUID
     final DateTime now = DateTime.now();
 
     // Create a monthly budget starting from current month
     final DateTime startDate = DateTime(now.year, now.month, 1);
+    // Setting day=0 of next month gives the last day of the current month
     final DateTime endDate = DateTime(
       now.month == 12 ? now.year + 1 : now.year,
       now.month == 12 ? 1 : now.month + 1,

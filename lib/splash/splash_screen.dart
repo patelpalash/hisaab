@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:google_fonts/google_fonts.dart';
 import '../auth/login_page.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -47,12 +48,20 @@ class _SplashScreenState extends State<SplashScreen>
             scale: _animation,
             child: Text(
               'Hisaab',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 48,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-                fontFamily: 'Montserrat', // Use a modern font
+              style: GoogleFonts.poppins(
+                textStyle: TextStyle(
+                  color: Colors.white,
+                  fontSize: 52,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withOpacity(0.2),
+                      offset: Offset(0, 4),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

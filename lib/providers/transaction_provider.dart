@@ -135,18 +135,8 @@ class TransactionProvider with ChangeNotifier {
 
   // Calculate total balance
   double calculateBalance() {
-    double income = 0;
-    double expense = 0;
-
-    for (var transaction in _transactions) {
-      if (transaction.isExpense) {
-        expense += transaction.amount;
-      } else {
-        income += transaction.amount;
-      }
-    }
-
-    return income - expense;
+    // Use the existing helper methods instead of recalculating
+    return calculateIncome() - calculateExpenses();
   }
 
   // Calculate total income
