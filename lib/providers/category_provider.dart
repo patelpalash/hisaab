@@ -21,7 +21,7 @@ class CategoryProvider with ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   // Initialize categories for a user
-  void initCategories(String userId) async {
+  Future<void> initCategories(String userId) async {
     _setLoading(true);
     _clearError();
 

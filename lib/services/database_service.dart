@@ -4,6 +4,7 @@ import '../models/user_model.dart';
 import '../models/transaction_model.dart';
 import '../models/category_model.dart';
 import '../models/budget_model.dart';
+import '../models/recurring_transaction_model.dart';
 
 class DatabaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -13,6 +14,7 @@ class DatabaseService {
   final CollectionReference _transactionsCollection;
   final CollectionReference _categoriesCollection;
   final CollectionReference _budgetsCollection;
+  final CollectionReference _recurringTransactionsCollection;
 
   DatabaseService()
       : _usersCollection = FirebaseFirestore.instance.collection('users'),
@@ -20,7 +22,9 @@ class DatabaseService {
             FirebaseFirestore.instance.collection('transactions'),
         _categoriesCollection =
             FirebaseFirestore.instance.collection('categories'),
-        _budgetsCollection = FirebaseFirestore.instance.collection('budgets');
+        _budgetsCollection = FirebaseFirestore.instance.collection('budgets'),
+        _recurringTransactionsCollection =
+            FirebaseFirestore.instance.collection('recurring_transactions');
 
   // USERS
 
@@ -308,5 +312,100 @@ class DatabaseService {
             .map((doc) =>
                 BudgetModel.fromMap(doc.data() as Map<String, dynamic>))
             .toList());
+  }
+
+  // RECURRING TRANSACTIONS
+
+  // Add a new recurring transaction
+  Future<String> addRecurringTransaction(
+      RecurringTransactionModel recurringTransaction) async {
+    try {
+      // If ID is empty, generate one
+      final String id = recurringTransaction.id.isEmpty
+          ? _recurringTransactionsCollection.doc().id
+          : recurringTransaction.id;
+
+      final RecurringTransactionModel recurringWithId =
+          recurringTransaction.copyWith(id: id);
+
+      await _recurringTransactionsCollection
+          .doc(id)
+          .set(recurringWithId.toMap());
+      return id;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error adding recurring transaction: $e');
+      }
+      rethrow;
+    }
+  }
+
+  // Update an existing recurring transaction
+  Future<void> updateRecurringTransaction(
+      RecurringTransactionModel recurringTransaction) async {
+    try {
+      await _recurringTransactionsCollection
+          .doc(recurringTransaction.id)
+          .update(
+              recurringTransaction.copyWith(updatedAt: DateTime.now()).toMap());
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error updating recurring transaction: $e');
+      }
+      rethrow;
+    }
+  }
+
+  // Delete a recurring transaction
+  Future<void> deleteRecurringTransaction(String id) async {
+    try {
+      await _recurringTransactionsCollection.doc(id).delete();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error deleting recurring transaction: $e');
+      }
+      rethrow;
+    }
+  }
+
+  // Get all recurring transactions for a user
+  Stream<List<RecurringTransactionModel>> getRecurringTransactionsStream(
+      String userId) {
+    return _recurringTransactionsCollection
+        .where('userId', isEqualTo: userId)
+        .orderBy('startDate', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => RecurringTransactionModel.fromMap(
+                doc.data() as Map<String, dynamic>))
+            .toList());
+  }
+
+  // Get active recurring transactions
+  Stream<List<RecurringTransactionModel>> getActiveRecurringTransactionsStream(
+      String userId) {
+    final now = DateTime.now().toIso8601String();
+
+    return _recurringTransactionsCollection
+        .where('userId', isEqualTo: userId)
+        .where('isActive', isEqualTo: true)
+        .orderBy('startDate', descending: true)
+        .snapshots()
+        .map((snapshot) {
+      final docs = snapshot.docs;
+      final List<RecurringTransactionModel> activeRecurrings = [];
+
+      for (var doc in docs) {
+        final recurring = RecurringTransactionModel.fromMap(
+            doc.data() as Map<String, dynamic>);
+        // Filter by end date client-side (Firestore can't do this filtering well)
+        if (recurring.endDate == null ||
+            recurring.endDate!.isAfter(DateTime.now())) {
+          activeRecurrings.add(recurring);
+        }
+      }
+
+      return activeRecurrings;
+    });
   }
 }

@@ -5,6 +5,7 @@ import '../models/user_model.dart';
 import '../models/transaction_model.dart';
 import '../models/category_model.dart';
 import '../models/budget_model.dart';
+import '../models/recurring_transaction_model.dart';
 import 'package:flutter/material.dart';
 
 class LocalDatabaseService {
@@ -25,8 +26,9 @@ class LocalDatabaseService {
     String path = join(await getDatabasesPath(), 'hisaab.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDb,
+      onUpgrade: _upgradeDb,
     );
   }
 
@@ -77,6 +79,29 @@ class LocalDatabaseService {
       )
     ''');
 
+    // Create recurring transactions table
+    await db.execute('''
+      CREATE TABLE recurring_transactions(
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        amount REAL NOT NULL,
+        categoryId TEXT NOT NULL,
+        isExpense INTEGER NOT NULL,
+        userId TEXT NOT NULL,
+        notes TEXT,
+        frequency TEXT NOT NULL,
+        startDate TEXT NOT NULL,
+        endDate TEXT,
+        isActive INTEGER NOT NULL,
+        dayOfMonth INTEGER,
+        dayOfWeek INTEGER,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT,
+        FOREIGN KEY (categoryId) REFERENCES categories (id),
+        FOREIGN KEY (userId) REFERENCES users (uid)
+      )
+    ''');
+
     // Create budgets table
     await db.execute('''
       CREATE TABLE budgets(
@@ -95,6 +120,34 @@ class LocalDatabaseService {
         FOREIGN KEY (categoryId) REFERENCES categories (id)
       )
     ''');
+  }
+
+  // Handle database upgrades
+  Future<void> _upgradeDb(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Create recurring transactions table for users upgrading from version 1
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS recurring_transactions(
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          amount REAL NOT NULL,
+          categoryId TEXT NOT NULL,
+          isExpense INTEGER NOT NULL,
+          userId TEXT NOT NULL,
+          notes TEXT,
+          frequency TEXT NOT NULL,
+          startDate TEXT NOT NULL,
+          endDate TEXT,
+          isActive INTEGER NOT NULL,
+          dayOfMonth INTEGER,
+          dayOfWeek INTEGER,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT,
+          FOREIGN KEY (categoryId) REFERENCES categories (id),
+          FOREIGN KEY (userId) REFERENCES users (uid)
+        )
+      ''');
+    }
   }
 
   // USERS
@@ -420,19 +473,7 @@ class LocalDatabaseService {
     final db = await database;
     await db.insert(
       'budgets',
-      {
-        'id': budget.id,
-        'userId': budget.userId,
-        'name': budget.name,
-        'amount': budget.amount,
-        'categoryId': budget.categoryId,
-        'startDate': budget.startDate.toIso8601String(),
-        'endDate': budget.endDate.toIso8601String(),
-        'isRecurring': budget.isRecurring ? 1 : 0,
-        'recurrenceType': budget.recurrenceType,
-        'createdAt': budget.createdAt.toIso8601String(),
-        'updatedAt': budget.updatedAt?.toIso8601String(),
-      },
+      budget.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
     return budget.id;
@@ -442,17 +483,7 @@ class LocalDatabaseService {
     final db = await database;
     await db.update(
       'budgets',
-      {
-        'userId': budget.userId,
-        'name': budget.name,
-        'amount': budget.amount,
-        'categoryId': budget.categoryId,
-        'startDate': budget.startDate.toIso8601String(),
-        'endDate': budget.endDate.toIso8601String(),
-        'isRecurring': budget.isRecurring ? 1 : 0,
-        'recurrenceType': budget.recurrenceType,
-        'updatedAt': DateTime.now().toIso8601String(),
-      },
+      budget.toMap(),
       where: 'id = ?',
       whereArgs: [budget.id],
     );
@@ -476,53 +507,303 @@ class LocalDatabaseService {
     );
 
     return List.generate(maps.length, (i) {
-      return BudgetModel(
-        id: maps[i]['id'],
-        userId: maps[i]['userId'],
-        name: maps[i]['name'],
-        amount: maps[i]['amount'],
-        categoryId: maps[i]['categoryId'],
-        startDate: DateTime.parse(maps[i]['startDate']),
-        endDate: DateTime.parse(maps[i]['endDate']),
-        isRecurring: maps[i]['isRecurring'] == 1,
-        recurrenceType: maps[i]['recurrenceType'],
-        createdAt: DateTime.parse(maps[i]['createdAt']),
-        updatedAt: maps[i]['updatedAt'] != null
-            ? DateTime.parse(maps[i]['updatedAt'])
-            : null,
-      );
+      return BudgetModel.fromMap(maps[i]);
     });
   }
 
-  Future<List<BudgetModel>> getCurrentMonthBudgets(String userId) async {
+  Future<BudgetModel?> getBudgetById(String id) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'budgets',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    if (maps.isNotEmpty) {
+      return BudgetModel.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  Future<List<BudgetModel>> getCurrentBudgets(String userId) async {
     final db = await database;
     final now = DateTime.now();
-    final startOfMonth = DateTime(now.year, now.month, 1).toIso8601String();
-    final endOfMonth = DateTime(now.year, now.month + 1, 0).toIso8601String();
 
     final List<Map<String, dynamic>> maps = await db.rawQuery('''
-      SELECT * FROM budgets 
-      WHERE userId = ? 
-      AND startDate <= ? 
+      SELECT * FROM budgets
+      WHERE userId = ?
+      AND startDate <= ?
       AND endDate >= ?
-    ''', [userId, endOfMonth, startOfMonth]);
+    ''', [userId, now.toIso8601String(), now.toIso8601String()]);
 
     return List.generate(maps.length, (i) {
-      return BudgetModel(
-        id: maps[i]['id'],
-        userId: maps[i]['userId'],
-        name: maps[i]['name'],
-        amount: maps[i]['amount'],
-        categoryId: maps[i]['categoryId'],
-        startDate: DateTime.parse(maps[i]['startDate']),
-        endDate: DateTime.parse(maps[i]['endDate']),
-        isRecurring: maps[i]['isRecurring'] == 1,
-        recurrenceType: maps[i]['recurrenceType'],
-        createdAt: DateTime.parse(maps[i]['createdAt']),
-        updatedAt: maps[i]['updatedAt'] != null
-            ? DateTime.parse(maps[i]['updatedAt'])
-            : null,
-      );
+      return BudgetModel.fromMap(maps[i]);
     });
+  }
+
+  // Get budgets for the current month
+  Future<List<BudgetModel>> getCurrentMonthBudgets(String userId) async {
+    final db = await database;
+
+    // Get current month's date range
+    final now = DateTime.now();
+    final firstDayOfMonth = DateTime(now.year, now.month, 1);
+    final lastDayOfMonth = DateTime(now.month == 12 ? now.year + 1 : now.year,
+        now.month == 12 ? 1 : now.month + 1, 0 // Last day of current month
+        );
+
+    final List<Map<String, dynamic>> maps = await db.query(
+      'budgets',
+      where:
+          'userId = ? AND ((startDate <= ? AND endDate >= ?) OR (startDate >= ? AND startDate <= ?))',
+      whereArgs: [
+        userId,
+        lastDayOfMonth.toIso8601String(),
+        firstDayOfMonth.toIso8601String(),
+        firstDayOfMonth.toIso8601String(),
+        lastDayOfMonth.toIso8601String(),
+      ],
+    );
+
+    return List.generate(maps.length, (i) {
+      return BudgetModel.fromMap(maps[i]);
+    });
+  }
+
+  // RECURRING TRANSACTIONS
+
+  Future<String> addRecurringTransaction(
+      RecurringTransactionModel recurringTransaction) async {
+    final db = await database;
+    await db.insert(
+      'recurring_transactions',
+      recurringTransaction.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return recurringTransaction.id;
+  }
+
+  Future<void> updateRecurringTransaction(
+      RecurringTransactionModel recurringTransaction) async {
+    final db = await database;
+    await db.update(
+      'recurring_transactions',
+      recurringTransaction.toMap(),
+      where: 'id = ?',
+      whereArgs: [recurringTransaction.id],
+    );
+  }
+
+  Future<void> deleteRecurringTransaction(String id) async {
+    final db = await database;
+    await db.delete(
+      'recurring_transactions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<List<RecurringTransactionModel>> getRecurringTransactions(
+      String userId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'recurring_transactions',
+      where: 'userId = ?',
+      whereArgs: [userId],
+      orderBy: 'startDate DESC', // Sort by start date descending
+    );
+
+    return List.generate(maps.length, (i) {
+      return RecurringTransactionModel.fromMap(maps[i]);
+    });
+  }
+
+  Future<List<RecurringTransactionModel>> getActiveRecurringTransactions(
+      String userId) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+
+    final List<Map<String, dynamic>> maps = await db.rawQuery('''
+      SELECT * FROM recurring_transactions
+      WHERE userId = ?
+      AND isActive = 1
+      AND (endDate IS NULL OR endDate >= ?)
+      ORDER BY startDate DESC
+    ''', [userId, now]);
+
+    return List.generate(maps.length, (i) {
+      return RecurringTransactionModel.fromMap(maps[i]);
+    });
+  }
+
+  Future<RecurringTransactionModel?> getRecurringTransactionById(
+      String id) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'recurring_transactions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    if (maps.isNotEmpty) {
+      return RecurringTransactionModel.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  // Process recurring transactions and create actual transactions
+  Future<List<TransactionModel>> processRecurringTransactions(
+      String userId) async {
+    final db = await database;
+    final List<RecurringTransactionModel> activeRecurrings =
+        await getActiveRecurringTransactions(userId);
+    final List<TransactionModel> createdTransactions = [];
+
+    if (activeRecurrings.isEmpty) {
+      return createdTransactions;
+    }
+
+    // Get the last processed date from metadata or use a default (yesterday)
+    final DateTime now = DateTime.now();
+    final DateTime yesterday = now.subtract(const Duration(days: 1));
+
+    for (var recurring in activeRecurrings) {
+      try {
+        // Find the last generated transaction for this recurring transaction
+        final List<Map<String, dynamic>> lastTransactionMaps =
+            await db.rawQuery('''
+          SELECT * FROM transactions
+          WHERE userId = ?
+          AND notes LIKE ?
+          ORDER BY date DESC
+          LIMIT 1
+        ''', [userId, '%Recurring ID: ${recurring.id}%']);
+
+        DateTime lastProcessedDate = yesterday;
+        if (lastTransactionMaps.isNotEmpty) {
+          final lastTransaction =
+              TransactionModel.fromMap(lastTransactionMaps.first);
+          lastProcessedDate = lastTransaction.date;
+        } else if (recurring.startDate.isAfter(lastProcessedDate)) {
+          lastProcessedDate =
+              recurring.startDate.subtract(const Duration(days: 1));
+        }
+
+        // Calculate next date
+        DateTime nextDate = recurring.getNextOccurrence(lastProcessedDate);
+
+        // Create transactions for any dates between last processed and today
+        while (!nextDate.isAfter(now) &&
+            (recurring.endDate == null ||
+                !nextDate.isAfter(recurring.endDate!))) {
+          if (recurring.shouldGenerateForDate(nextDate)) {
+            // Check if transaction already exists for this specific date and recurring ID
+            final String dateString = nextDate.toIso8601String().split('T')[0];
+            final List<Map<String, dynamic>> existingTransactions =
+                await db.rawQuery('''
+              SELECT * FROM transactions 
+              WHERE userId = ? 
+              AND notes LIKE ? 
+              AND date LIKE ?
+              LIMIT 1
+            ''', [userId, '%Recurring ID: ${recurring.id}%', '$dateString%']);
+
+            // Only create transaction if it doesn't already exist
+            if (existingTransactions.isEmpty) {
+              final transaction = recurring.generateTransaction(nextDate);
+              await addTransaction(transaction);
+              createdTransactions.add(transaction);
+            }
+          }
+          nextDate = recurring.getNextOccurrence(nextDate);
+        }
+      } catch (e) {
+        print('Error processing recurring transaction ${recurring.id}: $e');
+        // Continue with next recurring transaction even if one fails
+        continue;
+      }
+    }
+
+    return createdTransactions;
+  }
+
+  // Cleanup duplicate recurring transactions for a given user
+  Future<int> cleanupDuplicateRecurringTransactions(String userId) async {
+    final db = await database;
+    int deletedCount = 0;
+
+    try {
+      // Get all recurring transactions
+      final List<RecurringTransactionModel> recurrings =
+          await getRecurringTransactions(userId);
+
+      for (var recurring in recurrings) {
+        // Get all generated transactions for this recurring transaction
+        final transactions = await db.query(
+          'transactions',
+          where: 'userId = ? AND notes LIKE ?',
+          whereArgs: [userId, '%Recurring ID: ${recurring.id}%'],
+          orderBy: 'date ASC',
+        );
+
+        // Group transactions by date to find duplicates
+        final Map<String, List<Map<String, dynamic>>> transactionsByDate = {};
+
+        for (var transaction in transactions) {
+          final date = (transaction['date'] as String)
+              .split('T')[0]; // Get just the date part
+          transactionsByDate[date] = transactionsByDate[date] ?? [];
+          transactionsByDate[date]!.add(transaction);
+        }
+
+        // For each date with more than one transaction, keep only the first one
+        for (var date in transactionsByDate.keys) {
+          if (transactionsByDate[date]!.length > 1) {
+            // Keep the first transaction, delete the rest
+            final toDelete = transactionsByDate[date]!.sublist(1);
+
+            for (var transaction in toDelete) {
+              await db.delete(
+                'transactions',
+                where: 'id = ?',
+                whereArgs: [transaction['id']],
+              );
+              deletedCount++;
+            }
+          }
+        }
+      }
+
+      return deletedCount;
+    } catch (e) {
+      print('Error cleaning up duplicate transactions: $e');
+      return 0;
+    }
+  }
+
+  // Completely reset transaction data for a user
+  Future<void> resetAllTransactionData(String userId) async {
+    final db = await database;
+
+    try {
+      // Delete all transactions
+      await db.delete(
+        'transactions',
+        where: 'userId = ?',
+        whereArgs: [userId],
+      );
+
+      // Delete all recurring transactions
+      await db.delete(
+        'recurring_transactions',
+        where: 'userId = ?',
+        whereArgs: [userId],
+      );
+
+      print('Successfully reset all transaction data for user: $userId');
+    } catch (e) {
+      print('Error resetting transaction data: $e');
+      throw Exception('Failed to reset transaction data: $e');
+    }
   }
 }

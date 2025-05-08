@@ -22,6 +22,8 @@ import 'screens/transactions/transaction_detail_screen.dart';
 import 'screens/budget/budget_list_screen.dart';
 import 'widgets/financial_summary_chart.dart';
 import 'widgets/app_drawer.dart';
+import 'screens/recurring_transactions_screen.dart';
+import 'screens/profile_screen.dart';
 
 // App theme colors
 final Color primaryColor = Color(0xFF6C63FF); // Main light purple color
@@ -927,6 +929,11 @@ class MyApp extends StatelessWidget {
           elevation: 8,
         ),
       ),
+      routes: {
+        '/recurring-transactions': (context) =>
+            const RecurringTransactionsScreen(),
+        '/profile': (context) => const ProfileScreen(),
+      },
       home: Consumer<AuthProvider>(
         builder: (context, authProvider, _) {
           if (authProvider.isLoading) {

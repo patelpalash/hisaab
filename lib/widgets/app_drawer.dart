@@ -109,6 +109,12 @@ class AppDrawer extends StatelessWidget {
                 ),
                 _buildMenuItem(
                   context,
+                  icon: Icons.replay_circle_filled_outlined,
+                  title: 'Recurring Transactions',
+                  routeName: '/recurring-transactions',
+                ),
+                _buildMenuItem(
+                  context,
                   icon: Icons.category_outlined,
                   title: 'Categories',
                 ),
@@ -116,6 +122,7 @@ class AppDrawer extends StatelessWidget {
                   context,
                   icon: Icons.account_circle_outlined,
                   title: 'Profile',
+                  routeName: '/profile',
                 ),
 
                 Divider(color: Colors.white.withOpacity(0.2), thickness: 1),
@@ -204,6 +211,8 @@ class AppDrawer extends StatelessWidget {
     required IconData icon,
     required String title,
     bool isSelected = false,
+    VoidCallback? onTap,
+    String? routeName,
   }) {
     return Container(
       margin: EdgeInsets.only(bottom: 5),
@@ -227,7 +236,11 @@ class AppDrawer extends StatelessWidget {
         ),
         onTap: () {
           Navigator.pop(context);
-          // Add navigation logic here
+          if (onTap != null) {
+            onTap();
+          } else if (routeName != null) {
+            Navigator.of(context).pushNamed(routeName);
+          }
         },
       ),
     );

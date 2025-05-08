@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../models/transaction_model.dart';
+import '../models/recurring_transaction_model.dart';
 import '../services/local_database_service.dart';
 
 class TransactionProvider with ChangeNotifier {
@@ -8,13 +9,21 @@ class TransactionProvider with ChangeNotifier {
 
   List<TransactionModel> _transactions = [];
   List<TransactionModel> _recentTransactions = [];
+  List<RecurringTransactionModel> _recurringTransactions = [];
   bool _isLoading = false;
   String? _errorMessage;
   Timer? _refreshTimer;
+  Timer? _recurringTransactionTimer;
+
+  // Class-level variable to track last processing time
+  DateTime _lastRecurringProcessTime =
+      DateTime.now().subtract(const Duration(hours: 12));
 
   // Getters
   List<TransactionModel> get transactions => _transactions;
   List<TransactionModel> get recentTransactions => _recentTransactions;
+  List<RecurringTransactionModel> get recurringTransactions =>
+      _recurringTransactions;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
@@ -29,6 +38,20 @@ class TransactionProvider with ChangeNotifier {
     _clearError();
 
     try {
+      // First, clean up any duplicate transactions from previous runs
+      final int cleanedCount =
+          await _databaseService.cleanupDuplicateRecurringTransactions(userId);
+      if (cleanedCount > 0 && kDebugMode) {
+        print('Cleaned up $cleanedCount duplicate recurring transactions');
+      }
+
+      // Process recurring transactions only if enough time has passed (at least 4 hours)
+      final now = DateTime.now();
+      if (now.difference(_lastRecurringProcessTime).inHours >= 4) {
+        await _processRecurringTransactions(userId);
+        _lastRecurringProcessTime = now; // Update last process time
+      }
+
       // Load all transactions
       _transactions = await _databaseService.getTransactions(userId);
 
@@ -36,10 +59,19 @@ class TransactionProvider with ChangeNotifier {
       _recentTransactions =
           await _databaseService.getRecentTransactions(userId);
 
+      // Load recurring transactions
+      _recurringTransactions =
+          await _databaseService.getRecurringTransactions(userId);
+
       // Set up periodic refresh
       _refreshTimer?.cancel();
       _refreshTimer = Timer.periodic(
           Duration(seconds: 30), (_) => _refreshTransactions(userId));
+
+      // Set up timer to process recurring transactions daily
+      _recurringTransactionTimer?.cancel();
+      _recurringTransactionTimer = Timer.periodic(
+          Duration(hours: 12), (_) => _processRecurringTransactions(userId));
 
       notifyListeners();
     } catch (e) {
@@ -49,12 +81,45 @@ class TransactionProvider with ChangeNotifier {
     }
   }
 
+  // Process recurring transactions
+  Future<void> _processRecurringTransactions(String userId) async {
+    try {
+      if (kDebugMode) {
+        print('Starting recurring transaction processing for user: $userId');
+      }
+
+      final List<TransactionModel> generatedTransactions =
+          await _databaseService.processRecurringTransactions(userId);
+
+      if (generatedTransactions.isNotEmpty) {
+        if (kDebugMode) {
+          print(
+              'Generated ${generatedTransactions.length} recurring transactions:');
+          for (var tx in generatedTransactions) {
+            print('- ${tx.title}: \$${tx.amount} (${tx.date.toString()})');
+          }
+        }
+
+        // If any transactions were generated, refresh the transaction lists
+        await _refreshTransactions(userId);
+      } else if (kDebugMode) {
+        print('No recurring transactions were generated at this time.');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error processing recurring transactions: $e');
+      }
+    }
+  }
+
   // Refresh transactions from local database
   Future<void> _refreshTransactions(String userId) async {
     try {
       _transactions = await _databaseService.getTransactions(userId);
       _recentTransactions =
           await _databaseService.getRecentTransactions(userId);
+      _recurringTransactions =
+          await _databaseService.getRecurringTransactions(userId);
       notifyListeners();
     } catch (e) {
       // Silent error handling for background refresh
@@ -83,6 +148,86 @@ class TransactionProvider with ChangeNotifier {
       return false;
     } finally {
       _setLoading(false);
+    }
+  }
+
+  // Add a recurring transaction
+  Future<bool> addRecurringTransaction(
+      RecurringTransactionModel recurringTransaction) async {
+    _setLoading(true);
+    _clearError();
+
+    try {
+      await _databaseService.addRecurringTransaction(recurringTransaction);
+      // Refresh recurring transactions
+      _recurringTransactions = await _databaseService
+          .getRecurringTransactions(recurringTransaction.userId);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _setError(e.toString());
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  // Update a recurring transaction
+  Future<bool> updateRecurringTransaction(
+      RecurringTransactionModel recurringTransaction) async {
+    _setLoading(true);
+    _clearError();
+
+    try {
+      await _databaseService.updateRecurringTransaction(recurringTransaction);
+      // Refresh recurring transactions
+      _recurringTransactions = await _databaseService
+          .getRecurringTransactions(recurringTransaction.userId);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _setError(e.toString());
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  // Delete a recurring transaction
+  Future<bool> deleteRecurringTransaction(String id) async {
+    _setLoading(true);
+    _clearError();
+
+    // First find the userId from the recurring transaction being deleted
+    final recurringTransaction =
+        _recurringTransactions.firstWhere((t) => t.id == id);
+    final userId = recurringTransaction.userId;
+
+    try {
+      await _databaseService.deleteRecurringTransaction(id);
+      // Refresh recurring transactions
+      _recurringTransactions =
+          await _databaseService.getRecurringTransactions(userId);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _setError(e.toString());
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  // Get active recurring transactions
+  Future<List<RecurringTransactionModel>> getActiveRecurringTransactions(
+      String userId) async {
+    try {
+      return await _databaseService.getActiveRecurringTransactions(userId);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error getting active recurring transactions: $e');
+      }
+      return [];
     }
   }
 
@@ -157,6 +302,7 @@ class TransactionProvider with ChangeNotifier {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _recurringTransactionTimer?.cancel();
     super.dispose();
   }
 
@@ -174,5 +320,56 @@ class TransactionProvider with ChangeNotifier {
   void _clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  // Manually clean up duplicate transactions
+  Future<int> cleanupDuplicateTransactions(String userId) async {
+    _setLoading(true);
+    _clearError();
+
+    try {
+      final int cleanedCount =
+          await _databaseService.cleanupDuplicateRecurringTransactions(userId);
+
+      // Refresh transactions after cleanup
+      _transactions = await _databaseService.getTransactions(userId);
+      _recentTransactions =
+          await _databaseService.getRecentTransactions(userId);
+
+      notifyListeners();
+      return cleanedCount;
+    } catch (e) {
+      _setError(e.toString());
+      return 0;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  // Reset all transaction data
+  Future<bool> resetAllTransactionData(String userId) async {
+    _setLoading(true);
+    _clearError();
+
+    try {
+      // Call the database service to reset all transaction data
+      await _databaseService.resetAllTransactionData(userId);
+
+      // Clear local lists
+      _transactions = [];
+      _recentTransactions = [];
+      _recurringTransactions = [];
+
+      // Reset processing time to prevent immediate recreation
+      _lastRecurringProcessTime = DateTime.now();
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _setError(e.toString());
+      return false;
+    } finally {
+      _setLoading(false);
+    }
   }
 }

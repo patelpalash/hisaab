@@ -2,10 +2,35 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
+import 'dart:io';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+  bool _isOnline = true;
+
+  AuthService() {
+    _checkConnectivity();
+  }
+
+  // Check internet connectivity
+  Future<void> _checkConnectivity() async {
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      _isOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      _isOnline = false;
+    }
+  }
+
+  // Getter for online status
+  bool get isOnline => _isOnline;
+
+  // Update online status
+  Future<bool> updateOnlineStatus() async {
+    await _checkConnectivity();
+    return _isOnline;
+  }
 
   // Auth state stream
   Stream<UserModel> get authStateChanges =>
