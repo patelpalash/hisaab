@@ -27,6 +27,16 @@ class TransactionDetailScreen extends StatelessWidget {
     // Get category for this transaction
     final category = categoryProvider.getCategoryById(transaction.categoryId);
 
+    // Get current balance
+    final currentBalance = transactionProvider.balance;
+
+    // Calculate balance after this transaction
+    final balanceAfterTransaction = transaction.isExpense
+        ? currentBalance +
+            transaction.amount // Add back the expense to get the balance before
+        : currentBalance -
+            transaction.amount; // Subtract the income to get the balance before
+
     // Default icon and colors for transaction if category is not found
     IconData icon =
         transaction.isExpense ? Icons.arrow_upward : Icons.arrow_downward;
@@ -42,17 +52,16 @@ class TransactionDetailScreen extends StatelessWidget {
       backgroundColor = category.backgroundColor;
     }
 
+    // Primary brand color
+    final primaryColor = const Color(0xFF6C63FF);
+
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF6C63FF),
+        backgroundColor: primaryColor,
+        elevation: 0,
         title: const Text('Transaction Details'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.delete),
-            onPressed: () {
-              _confirmDelete(context, transactionProvider);
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () {
@@ -62,185 +71,298 @@ class TransactionDetailScreen extends StatelessWidget {
               );
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: () {
+              _confirmDelete(context, transactionProvider);
+            },
+          ),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Transaction header card
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    // Category icon
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: backgroundColor,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        icon,
-                        color: iconColor,
-                        size: 32,
-                      ),
+            // Top section with transaction amount and category
+            Container(
+              width: double.infinity,
+              color: primaryColor,
+              padding: const EdgeInsets.only(
+                  left: 20, right: 20, bottom: 30, top: 10),
+              child: Column(
+                children: [
+                  // Transaction amount
+                  Text(
+                    transaction.isExpense
+                        ? '- ${_formatCurrency(transaction.amount)}'
+                        : '+ ${_formatCurrency(transaction.amount)}',
+                    style: const TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
-                    const SizedBox(height: 16),
+                  ),
+                  const SizedBox(height: 8),
 
-                    // Transaction title
-                    Text(
-                      transaction.title,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  // Category badge
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    const SizedBox(height: 8),
-
-                    // Transaction amount
-                    Text(
-                      transaction.isExpense
-                          ? '- ${_formatCurrency(transaction.amount)}'
-                          : '+ ${_formatCurrency(transaction.amount)}',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color:
-                            transaction.isExpense ? Colors.red : Colors.green,
-                      ),
-                    ),
-
-                    // Transaction date with time
-                    Text(
-                      DateFormat('EEEE, MMMM d, y • h:mm a')
-                          .format(transaction.date),
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-
-                    // Transaction type badge
-                    Container(
-                      margin: const EdgeInsets.only(top: 12),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: transaction.isExpense
-                            ? Colors.red.withOpacity(0.1)
-                            : Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        transaction.isExpense ? 'Expense' : 'Income',
-                        style: TextStyle(
-                          color:
-                              transaction.isExpense ? Colors.red : Colors.green,
-                          fontWeight: FontWeight.bold,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          icon,
+                          color: Colors.white,
+                          size: 18,
                         ),
+                        const SizedBox(width: 8),
+                        Text(
+                          category?.name ?? 'Uncategorized',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Transaction title and date
+            Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: backgroundColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          icon,
+                          color: iconColor,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              transaction.title,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              DateFormat('EEEE, MMMM d, y • h:mm a')
+                                  .format(transaction.date),
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (transaction.notes != null &&
+                      transaction.notes!.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Notes',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      transaction.notes!,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey.shade800,
                       ),
                     ),
                   ],
-                ),
+                ],
+              ),
+            ),
+
+            // Transaction Impact - Balance information
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Balance Impact',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Before Transaction',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatCurrency(balanceAfterTransaction),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Icon(
+                        Icons.arrow_forward,
+                        color: Colors.grey.shade400,
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'After Transaction',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatCurrency(currentBalance),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: transaction.isExpense
+                                  ? Colors.red.shade700
+                                  : Colors.green.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Additional Details
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Additional Details',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Date
+                  _buildDetailRow(
+                    'Date',
+                    DateFormat('MMMM d, y').format(transaction.date),
+                    Icons.calendar_today,
+                  ),
+                  // Time
+                  _buildDetailRow(
+                    'Time',
+                    DateFormat('h:mm a').format(transaction.date),
+                    Icons.access_time,
+                  ),
+                  // Transaction type
+                  _buildDetailRow(
+                    'Type',
+                    transaction.isExpense ? 'Expense' : 'Income',
+                    transaction.isExpense
+                        ? Icons.arrow_upward
+                        : Icons.arrow_downward,
+                    textColor:
+                        transaction.isExpense ? Colors.red : Colors.green,
+                  ),
+                  // Transaction ID
+                  _buildDetailRow(
+                    'Transaction ID',
+                    transaction.id,
+                    Icons.fingerprint,
+                    isLast: true,
+                  ),
+                ],
               ),
             ),
 
             const SizedBox(height: 24),
-
-            // Details section
-            Text(
-              'Details',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade700,
-              ),
-            ),
-            const Divider(),
-
-            // Category
-            _buildDetailRow(
-              'Category',
-              category?.name ?? 'Uncategorized',
-              Icons.category,
-            ),
-
-            // Notes (if any)
-            if (transaction.notes != null && transaction.notes!.isNotEmpty)
-              _buildDetailRow(
-                'Notes',
-                transaction.notes!,
-                Icons.note,
-              ),
-
-            // Amount
-            _buildDetailRow(
-              'Amount',
-              _formatCurrency(transaction.amount),
-              Icons.attach_money,
-            ),
-
-            // Date
-            _buildDetailRow(
-              'Date',
-              DateFormat('MMMM d, y').format(transaction.date),
-              Icons.calendar_today,
-            ),
-
-            // Time
-            _buildDetailRow(
-              'Time',
-              DateFormat('h:mm a').format(transaction.date),
-              Icons.access_time,
-            ),
-
-            // Transaction ID
-            _buildDetailRow(
-              'Transaction ID',
-              transaction.id,
-              Icons.fingerprint,
-            ),
-
-            const SizedBox(height: 32),
-
-            // Current balance information
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              color: const Color(0xFF6C63FF).withOpacity(0.1),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Transaction Impact',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Your balance ${transaction.isExpense ? 'decreased' : 'increased'} by ${_formatCurrency(transaction.amount)} after this transaction.',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -248,40 +370,51 @@ class TransactionDetailScreen extends StatelessWidget {
   }
 
   // Helper method to build detail rows
-  Widget _buildDetailRow(String label, String value, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            color: Colors.grey.shade600,
-            size: 20,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 14,
+  Widget _buildDetailRow(String label, String value, IconData icon,
+      {Color? textColor, bool isLast = false}) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: textColor ?? Colors.grey.shade600,
+                size: 18,
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 14,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
+                ],
+              ),
+              const Spacer(),
+              Flexible(
+                flex: 2,
+                child: Text(
                   value,
-                  style: const TextStyle(
-                    fontSize: 16,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
                   ),
+                  textAlign: TextAlign.right,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        if (!isLast) const Divider(),
+      ],
     );
   }
 

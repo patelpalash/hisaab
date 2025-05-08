@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'firebase_options.dart';
 import 'splash/splash_screen.dart';
 import 'auth/login_page.dart';
@@ -16,6 +17,7 @@ import 'providers/category_provider.dart';
 import 'screens/add_transaction_screen.dart';
 import 'screens/transactions/transactions_list_screen.dart';
 import 'screens/transactions/transaction_detail_screen.dart';
+import 'screens/debug_transaction_page.dart';
 
 // App theme colors
 final Color primaryColor = Color(0xFF6C63FF); // Main light purple color
@@ -126,7 +128,37 @@ class _HomePageState extends State<HomePage> {
                   padding: const EdgeInsets.only(right: 16.0, left: 8.0),
                   child: GestureDetector(
                     onTap: () {
-                      // Show profile options or navigate to profile page
+                      // Show debug options in development mode
+                      if (kDebugMode) {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Development Options'),
+                            content: const Text(
+                                'These options are only available in debug mode.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          DebugTransactionPage(
+                                              userId: user.uid),
+                                    ),
+                                  );
+                                },
+                                child: const Text('Debug Transactions'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Close'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
                     },
                     child: CircleAvatar(
                       backgroundColor: Colors.white,
@@ -601,83 +633,185 @@ class _HomePageState extends State<HomePage> {
       backgroundColor = category.backgroundColor;
     }
 
-    return InkWell(
-      onTap: () {
-        // Navigate to transaction detail screen
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                TransactionDetailScreen(transaction: transaction),
+    // Create the transaction card
+    Widget transactionCard = Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          // Category icon with background
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: iconColor,
+            ),
           ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.shade200,
-              blurRadius: 5,
-              offset: const Offset(0, 2),
+          const SizedBox(width: 16),
+
+          // Transaction details
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  transaction.title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  DateFormat('MMMM dd, yyyy').format(transaction.date),
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Row(
+          ),
+
+          // Amount
+          Text(
+            transaction.isExpense
+                ? '- ${_formatCurrency(transaction.amount)}'
+                : '+ ${_formatCurrency(transaction.amount)}',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: transaction.isExpense ? Colors.red : Colors.green,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // Wrap with Slidable for swipe actions
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Slidable(
+        key: Key(transaction.id),
+        endActionPane: ActionPane(
+          motion: const DrawerMotion(),
+          extentRatio: 0.25,
           children: [
-            // Category icon with background
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: backgroundColor,
-                borderRadius: BorderRadius.circular(12),
+            SlidableAction(
+              onPressed: (_) {
+                _navigateToEditTransaction(context, transaction);
+              },
+              backgroundColor: Colors.transparent,
+              foregroundColor: primaryColor,
+              icon: Icons.edit_outlined,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                bottomLeft: Radius.circular(16),
               ),
-              child: Icon(
-                icon,
-                color: iconColor,
-              ),
+              padding: const EdgeInsets.all(4),
+              spacing: 4,
+              autoClose: true,
             ),
-            const SizedBox(width: 16),
-
-            // Transaction details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    transaction.title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                  Text(
-                    DateFormat('MMMM dd, yyyy').format(transaction.date),
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
+            SlidableAction(
+              onPressed: (_) {
+                _confirmDeleteTransaction(context, transaction);
+              },
+              backgroundColor: Color(0xFFF06292), // Pink shade
+              foregroundColor: Colors.white,
+              icon: Icons.delete_outline_rounded,
+              borderRadius: const BorderRadius.only(
+                topRight: Radius.circular(16),
+                bottomRight: Radius.circular(16),
               ),
-            ),
-
-            // Amount
-            Text(
-              transaction.isExpense
-                  ? '- ${_formatCurrency(transaction.amount)}'
-                  : '+ ${_formatCurrency(transaction.amount)}',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: transaction.isExpense ? Colors.red : Colors.green,
-              ),
+              padding: const EdgeInsets.all(4),
+              spacing: 4,
+              autoClose: true,
             ),
           ],
         ),
+        child: Container(
+          decoration: BoxDecoration(
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.shade200,
+                blurRadius: 5,
+                offset: const Offset(0, 2),
+              ),
+            ],
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Material(
+              color: Colors.white,
+              child: InkWell(
+                onTap: () {
+                  // Navigate to transaction detail screen
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          TransactionDetailScreen(transaction: transaction),
+                    ),
+                  );
+                },
+                child: transactionCard,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Confirm delete dialog
+  void _confirmDeleteTransaction(
+      BuildContext context, TransactionModel transaction) {
+    final transactionProvider =
+        Provider.of<TransactionProvider>(context, listen: false);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Transaction'),
+        content: Text(
+          'Are you sure you want to delete this ${transaction.isExpense ? 'expense' : 'income'} of ${_formatCurrency(transaction.amount)}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              // Delete the transaction
+              final success =
+                  await transactionProvider.deleteTransaction(transaction.id);
+              if (success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Transaction deleted')),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Failed to delete transaction')),
+                );
+              }
+            },
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
   }
@@ -688,6 +822,19 @@ class _HomePageState extends State<HomePage> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => AddTransactionScreen(isExpense: isExpense),
+      ),
+    );
+  }
+
+  // Navigate to edit transaction screen
+  void _navigateToEditTransaction(
+      BuildContext context, TransactionModel transaction) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AddTransactionScreen(
+          isExpense: transaction.isExpense,
+          transactionToEdit: transaction,
+        ),
       ),
     );
   }

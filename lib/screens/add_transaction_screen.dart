@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
 import '../models/transaction_model.dart';
 import '../models/category_model.dart';
 import '../providers/auth_provider.dart';
@@ -9,10 +10,12 @@ import '../providers/transaction_provider.dart';
 
 class AddTransactionScreen extends StatefulWidget {
   final bool isExpense;
+  final TransactionModel? transactionToEdit;
 
   const AddTransactionScreen({
     Key? key,
     this.isExpense = true,
+    this.transactionToEdit,
   }) : super(key: key);
 
   @override
@@ -31,6 +34,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   String _calculationBuffer = '';
   String _operator = '';
   double _previousAmount = 0;
+  bool _isEditing = false;
+  String? _transactionId;
 
   // Color variables
   final Color primaryColor = const Color(0xFF6C63FF);
@@ -41,22 +46,41 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   @override
   void initState() {
     super.initState();
+
+    // Determine if we're editing and set the initial tab
+    _isEditing = widget.transactionToEdit != null;
+    int initialTab = widget.isExpense ? 0 : 1;
+
+    // If editing, populate values from existing transaction
+    if (_isEditing) {
+      _transactionId = widget.transactionToEdit!.id;
+      _amount = widget.transactionToEdit!.amount.toString();
+      _note = widget.transactionToEdit!.notes ?? '';
+      _selectedDate = widget.transactionToEdit!.date;
+      _selectedCategoryId = widget.transactionToEdit!.categoryId;
+      initialTab = widget.transactionToEdit!.isExpense ? 0 : 1;
+    }
+
     _tabController = TabController(
       length: 3,
       vsync: this,
-      initialIndex: widget.isExpense ? 0 : 1,
+      initialIndex: initialTab,
     );
 
     _tabController.addListener(_handleTabChange);
 
-    // Initialize category providers
+    // Initialize category providers and select the correct category
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       if (authProvider.isAuthenticated) {
-        // Select first category by default when categories are loaded
-        final categoryProvider =
-            Provider.of<CategoryProvider>(context, listen: false);
-        _updateSelectedCategory();
+        if (_isEditing) {
+          final categoryProvider =
+              Provider.of<CategoryProvider>(context, listen: false);
+          _selectedCategory =
+              categoryProvider.getCategoryById(_selectedCategoryId!);
+        } else {
+          _updateSelectedCategory();
+        }
       }
     });
   }
@@ -238,7 +262,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   }
 
   // Save the transaction
-  void _saveTransaction() {
+  Future<void> _saveTransaction() async {
     // Validate inputs
     if (_amount == '0') {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -269,34 +293,93 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       final bool isIncome = _tabController.index == 1;
       // For transfer (index 2), we'll treat it as an expense
 
-      // Create the transaction
-      final transaction = TransactionModel.create(
-        title: _selectedCategory?.name ??
-            (_tabController.index == 2 ? 'Transfer' : 'Transaction'),
-        amount: amountValue,
-        date: _selectedDate,
-        categoryId: _selectedCategoryId ?? '',
-        isExpense:
-            isExpense || _tabController.index == 2, // Treat transfer as expense
-        userId: authProvider.user.uid,
-        notes: _note.isNotEmpty ? _note : null,
-      );
-
-      // Save the transaction
-      transactionProvider.addTransaction(transaction).then((success) {
-        if (success) {
-          Navigator.of(context).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(
-                    '${isExpense ? 'Expense' : isIncome ? 'Income' : 'Transfer'} added successfully')),
+      if (_isEditing && _transactionId != null) {
+        // Update existing transaction
+        try {
+          final updatedTransaction = TransactionModel(
+            id: _transactionId!,
+            title: _selectedCategory?.name ??
+                (_tabController.index == 2 ? 'Transfer' : 'Transaction'),
+            amount: amountValue,
+            date: _selectedDate,
+            categoryId: _selectedCategoryId ?? '',
+            isExpense: isExpense ||
+                _tabController.index == 2, // Treat transfer as expense
+            userId: authProvider.user.uid,
+            notes: _note.isNotEmpty ? _note : null,
+            createdAt: widget.transactionToEdit!
+                .createdAt, // Keep the original creation time
+            updatedAt: DateTime.now(), // Update the modification time
           );
-        } else {
+
+          // Debug info
+          if (kDebugMode) {
+            print('Updating transaction:');
+            print('ID: ${updatedTransaction.id}');
+            print('Title: ${updatedTransaction.title}');
+            print('Amount: ${updatedTransaction.amount}');
+            print('Date: ${updatedTransaction.date}');
+            print('CategoryId: ${updatedTransaction.categoryId}');
+            print('IsExpense: ${updatedTransaction.isExpense}');
+            print('UserId: ${updatedTransaction.userId}');
+            print('Notes: ${updatedTransaction.notes}');
+          }
+
+          // Update the transaction
+          final success =
+              await transactionProvider.updateTransaction(updatedTransaction);
+
+          if (success) {
+            Navigator.of(context).pop();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text(
+                      '${isExpense ? 'Expense' : isIncome ? 'Income' : 'Transfer'} updated successfully')),
+            );
+          } else {
+            final error = transactionProvider.errorMessage;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text(
+                      'Failed to update transaction${error != null ? ': $error' : ''}')),
+            );
+          }
+        } catch (e) {
+          print('Error updating transaction: $e');
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to add transaction')),
+            SnackBar(content: Text('Error updating transaction: $e')),
           );
         }
-      });
+      } else {
+        // Create new transaction
+        final transaction = TransactionModel.create(
+          title: _selectedCategory?.name ??
+              (_tabController.index == 2 ? 'Transfer' : 'Transaction'),
+          amount: amountValue,
+          date: _selectedDate,
+          categoryId: _selectedCategoryId ?? '',
+          isExpense: isExpense ||
+              _tabController.index == 2, // Treat transfer as expense
+          userId: authProvider.user.uid,
+          notes: _note.isNotEmpty ? _note : null,
+        );
+
+        // Save the transaction
+        transactionProvider.addTransaction(transaction).then((success) {
+          if (success) {
+            Navigator.of(context).pop();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text(
+                      '${isExpense ? 'Expense' : isIncome ? 'Income' : 'Transfer'} added successfully')),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to add transaction')),
+            );
+          }
+        });
+      }
     } catch (e) {
       print('Error saving transaction: $e');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -347,7 +430,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     return Scaffold(
       appBar: AppBar(
         backgroundColor: primaryColor,
-        title: const Text('Add Transaction'),
+        title: Text(_isEditing ? 'Edit Transaction' : 'Add Transaction'),
         actions: [
           IconButton(
             icon: const Icon(Icons.currency_exchange),

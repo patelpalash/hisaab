@@ -69,7 +69,6 @@ class TransactionModel {
       'isExpense': isExpense ? 1 : 0,
       'userId': userId,
       'notes': notes,
-      'metadata': metadata != null ? metadata.toString() : null,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
