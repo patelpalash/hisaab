@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import '../models/account_model.dart';
 
 class FinancialSummaryChart extends StatefulWidget {
   final double income;
   final double expense;
   final double balance;
+  final List<AccountModel> accounts;
 
   const FinancialSummaryChart({
     Key? key,
     required this.income,
     required this.expense,
     required this.balance,
+    this.accounts = const [],
   }) : super(key: key);
 
   @override
@@ -21,6 +24,7 @@ class _FinancialSummaryChartState extends State<FinancialSummaryChart>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _animation;
+  bool _showAccountDetails = false;
 
   @override
   void initState() {
@@ -76,10 +80,32 @@ class _FinancialSummaryChartState extends State<FinancialSummaryChart>
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              Icon(
-                Icons.pie_chart,
-                color: Theme.of(context).primaryColor,
-                size: 24,
+              Row(
+                children: [
+                  // Toggle to show/hide account details
+                  if (widget.accounts.isNotEmpty)
+                    IconButton(
+                      icon: Icon(
+                        _showAccountDetails
+                            ? Icons.account_balance_wallet
+                            : Icons.pie_chart,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _showAccountDetails = !_showAccountDetails;
+                        });
+                      },
+                      tooltip: _showAccountDetails
+                          ? 'Show overall summary'
+                          : 'Show accounts breakdown',
+                    ),
+                  Icon(
+                    Icons.pie_chart,
+                    color: Theme.of(context).primaryColor,
+                    size: 24,
+                  ),
+                ],
               ),
             ],
           ),
@@ -149,25 +175,112 @@ class _FinancialSummaryChartState extends State<FinancialSummaryChart>
             ),
           ),
 
-          // Legend items
-          Padding(
-            padding: const EdgeInsets.only(top: 16.0, left: 16.0, right: 16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildLegendItem(
-                  'Income',
-                  '₹${widget.income.toInt()}',
-                  Colors.green.shade400,
+          // Legend items - Show accounts breakdown or regular legend
+          _showAccountDetails && widget.accounts.isNotEmpty
+              ? _buildAccountsSummary()
+              : Padding(
+                  padding:
+                      const EdgeInsets.only(top: 16.0, left: 16.0, right: 16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildLegendItem(
+                        'Income',
+                        '₹${widget.income.toInt()}',
+                        Colors.green.shade400,
+                      ),
+                      _buildLegendItem(
+                        'Expense',
+                        '₹${widget.expense.toInt()}',
+                        Colors.red.shade400,
+                      ),
+                    ],
+                  ),
                 ),
-                _buildLegendItem(
-                  'Expense',
-                  '₹${widget.expense.toInt()}',
-                  Colors.red.shade400,
-                ),
-              ],
-            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccountsSummary() {
+    if (widget.accounts.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            'No accounts available',
+            style: TextStyle(color: Colors.grey),
           ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0),
+      child: Column(
+        children: [
+          for (var account in widget.accounts)
+            Padding(
+              padding:
+                  const EdgeInsets.only(bottom: 8.0, left: 16.0, right: 16.0),
+              child: Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 4,
+                      spreadRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // Account icon
+                    Container(
+                      padding: EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: account.color.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        account.icon,
+                        color: account.color,
+                        size: 20,
+                      ),
+                    ),
+                    SizedBox(width: 16),
+
+                    // Account name and balance
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            account.name,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Text(
+                            'Balance: ₹${account.balance.toInt()}',
+                            style: TextStyle(
+                              color: account.balance >= 0
+                                  ? Colors.green.shade700
+                                  : Colors.red.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );

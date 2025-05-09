@@ -4,11 +4,15 @@ import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart';
 import '../models/transaction_model.dart';
 import '../models/category_model.dart';
+import '../models/account_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/category_provider.dart';
 import '../providers/transaction_provider.dart';
+import '../providers/account_provider.dart';
 
 class AddTransactionScreen extends StatefulWidget {
+  static const routeName = '/add-transaction';
+
   final bool isExpense;
   final TransactionModel? transactionToEdit;
 
@@ -30,6 +34,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   DateTime _selectedDate = DateTime.now();
   String? _selectedCategoryId;
   CategoryModel? _selectedCategory;
+  String? _selectedAccountId;
+  String? _selectedToAccountId;
   bool _isCalculating = false;
   String _calculationBuffer = '';
   String _operator = '';
@@ -58,7 +64,14 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       _note = widget.transactionToEdit!.notes ?? '';
       _selectedDate = widget.transactionToEdit!.date;
       _selectedCategoryId = widget.transactionToEdit!.categoryId;
+      _selectedAccountId = widget.transactionToEdit!.accountId;
+      _selectedToAccountId = widget.transactionToEdit!.toAccountId;
       initialTab = widget.transactionToEdit!.isExpense ? 0 : 1;
+
+      // Set the correct tab for transfer
+      if (widget.transactionToEdit!.type == TransactionType.transfer) {
+        initialTab = 2;
+      }
     }
 
     _tabController = TabController(
@@ -69,10 +82,22 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
 
     _tabController.addListener(_handleTabChange);
 
-    // Initialize category providers and select the correct category
+    // Initialize providers and select the correct category and account
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       if (authProvider.isAuthenticated) {
+        // Load accounts
+        final accountProvider =
+            Provider.of<AccountProvider>(context, listen: false);
+        if (!_isEditing || _selectedAccountId == null) {
+          final accounts = accountProvider.accounts;
+          if (accounts.isNotEmpty) {
+            setState(() {
+              _selectedAccountId = accounts.first.id;
+            });
+          }
+        }
+
         if (_isEditing) {
           final categoryProvider =
               Provider.of<CategoryProvider>(context, listen: false);
@@ -280,10 +305,33 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       return;
     }
 
+    // For transfer, ensure we have both from and to accounts
+    if (_tabController.index == 2) {
+      if (_selectedAccountId == null || _selectedToAccountId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Please select source and destination accounts')),
+        );
+        return;
+      }
+
+      // Ensure from and to accounts are different
+      if (_selectedAccountId == _selectedToAccountId) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content:
+                  Text('Source and destination accounts must be different')),
+        );
+        return;
+      }
+    }
+
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final transactionProvider =
           Provider.of<TransactionProvider>(context, listen: false);
+      final accountProvider =
+          Provider.of<AccountProvider>(context, listen: false);
 
       // Parse amount
       final double amountValue = double.parse(_amount);
@@ -291,7 +339,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       // Determine transaction type
       final bool isExpense = _tabController.index == 0;
       final bool isIncome = _tabController.index == 1;
-      // For transfer (index 2), we'll treat it as an expense
+      final bool isTransfer = _tabController.index == 2;
 
       if (_isEditing && _transactionId != null) {
         // Update existing transaction
@@ -303,10 +351,16 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
             amount: amountValue,
             date: _selectedDate,
             categoryId: _selectedCategoryId ?? '',
-            isExpense: isExpense ||
-                _tabController.index == 2, // Treat transfer as expense
+            isExpense: isExpense,
+            type: isExpense
+                ? TransactionType.expense
+                : (isIncome
+                    ? TransactionType.income
+                    : TransactionType.transfer),
             userId: authProvider.user.uid,
             notes: _note.isNotEmpty ? _note : null,
+            accountId: _selectedAccountId,
+            toAccountId: isTransfer ? _selectedToAccountId : null,
             createdAt: widget.transactionToEdit!
                 .createdAt, // Keep the original creation time
             updatedAt: DateTime.now(), // Update the modification time
@@ -321,28 +375,57 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
             print('Date: ${updatedTransaction.date}');
             print('CategoryId: ${updatedTransaction.categoryId}');
             print('IsExpense: ${updatedTransaction.isExpense}');
+            print('Type: ${updatedTransaction.type}');
             print('UserId: ${updatedTransaction.userId}');
+            print('AccountId: ${updatedTransaction.accountId}');
+            print('ToAccountId: ${updatedTransaction.toAccountId}');
             print('Notes: ${updatedTransaction.notes}');
           }
 
-          // Update the transaction
-          final success =
-              await transactionProvider.updateTransaction(updatedTransaction);
+          // For transfers, use the accountProvider to process the transfer
+          if (isTransfer) {
+            final success = await accountProvider.processTransfer(
+              fromAccountId: _selectedAccountId!,
+              toAccountId: _selectedToAccountId!,
+              amount: amountValue,
+              title: _selectedCategory?.name ?? 'Transfer',
+              userId: authProvider.user.uid,
+              notes: _note.isNotEmpty ? _note : null,
+            );
 
-          if (success) {
-            Navigator.of(context).pop();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text(
-                      '${isExpense ? 'Expense' : isIncome ? 'Income' : 'Transfer'} updated successfully')),
-            );
+            if (success) {
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Transfer updated successfully')),
+              );
+            } else {
+              final error = accountProvider.errorMessage;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text(
+                        'Failed to update transfer${error != null ? ': $error' : ''}')),
+              );
+            }
           } else {
-            final error = transactionProvider.errorMessage;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text(
-                      'Failed to update transaction${error != null ? ': $error' : ''}')),
-            );
+            // Update the transaction
+            final success =
+                await transactionProvider.updateTransaction(updatedTransaction);
+
+            if (success) {
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text(
+                        '${isExpense ? 'Expense' : 'Income'} updated successfully')),
+              );
+            } else {
+              final error = transactionProvider.errorMessage;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text(
+                        'Failed to update transaction${error != null ? ': $error' : ''}')),
+              );
+            }
           }
         } catch (e) {
           print('Error updating transaction: $e');
@@ -351,34 +434,69 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
           );
         }
       } else {
-        // Create new transaction
-        final transaction = TransactionModel.create(
-          title: _selectedCategory?.name ??
-              (_tabController.index == 2 ? 'Transfer' : 'Transaction'),
-          amount: amountValue,
-          date: _selectedDate,
-          categoryId: _selectedCategoryId ?? '',
-          isExpense: isExpense ||
-              _tabController.index == 2, // Treat transfer as expense
-          userId: authProvider.user.uid,
-          notes: _note.isNotEmpty ? _note : null,
-        );
+        // For transfers, use the accountProvider to process the transfer
+        if (isTransfer) {
+          final success = await accountProvider.processTransfer(
+            fromAccountId: _selectedAccountId!,
+            toAccountId: _selectedToAccountId!,
+            amount: amountValue,
+            title: _selectedCategory?.name ?? 'Transfer',
+            userId: authProvider.user.uid,
+            notes: _note.isNotEmpty ? _note : null,
+          );
 
-        // Save the transaction
-        transactionProvider.addTransaction(transaction).then((success) {
           if (success) {
             Navigator.of(context).pop();
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text(
-                      '${isExpense ? 'Expense' : isIncome ? 'Income' : 'Transfer'} added successfully')),
+              const SnackBar(content: Text('Transfer completed successfully')),
             );
           } else {
+            final error = accountProvider.errorMessage;
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Failed to add transaction')),
+              SnackBar(
+                  content: Text(
+                      'Failed to create transfer${error != null ? ': $error' : ''}')),
             );
           }
-        });
+        } else {
+          // Create new transaction
+          final transaction = TransactionModel.create(
+            title: _selectedCategory?.name ?? 'Transaction',
+            amount: amountValue,
+            date: _selectedDate,
+            categoryId: _selectedCategoryId ?? '',
+            isExpense: isExpense,
+            type: isExpense ? TransactionType.expense : TransactionType.income,
+            userId: authProvider.user.uid,
+            notes: _note.isNotEmpty ? _note : null,
+            accountId:
+                _selectedAccountId, // This will be null if no account selected
+          );
+
+          // Log transaction details for debugging
+          if (kDebugMode) {
+            print(
+                'Creating transaction: ${transaction.title}, Amount: ${transaction.amount}');
+            print('Account ID: ${transaction.accountId}');
+            print('Category ID: ${transaction.categoryId}');
+          }
+
+          // Save the transaction
+          transactionProvider.addTransaction(transaction).then((success) {
+            if (success) {
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                    content: Text(
+                        '${isExpense ? 'Expense' : 'Income'} added successfully')),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Failed to add transaction')),
+              );
+            }
+          });
+        }
       }
     } catch (e) {
       print('Error saving transaction: $e');
@@ -419,6 +537,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   @override
   Widget build(BuildContext context) {
     final categoryProvider = Provider.of<CategoryProvider>(context);
+    final accountProvider = Provider.of<AccountProvider>(context);
+    final accounts = accountProvider.accounts;
 
     // Get the appropriate categories based on the selected tab
     final categories = _tabController.index == 0
@@ -493,7 +613,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
             ),
           ),
 
-          // Date picker and note field
+          // Date picker and account in same row
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -501,15 +621,19 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                 // Date button
                 OutlinedButton.icon(
                   onPressed: _selectDate,
-                  icon: const Icon(Icons.calendar_today),
+                  icon: const Icon(Icons.calendar_today, size: 16),
                   label: Text(
-                    DateFormat('MMM dd, yyyy').format(_selectedDate),
+                    DateFormat('dd MMM').format(_selectedDate),
+                    style: TextStyle(fontSize: 13),
                   ),
                   style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                    minimumSize: Size(0, 36),
                     foregroundColor: primaryColor,
                   ),
                 ),
-                const SizedBox(width: 16),
+
+                const SizedBox(width: 8),
 
                 // Note field
                 Expanded(
@@ -517,8 +641,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                     decoration: InputDecoration(
                       hintText: 'Note',
                       border: InputBorder.none,
-                      icon: Icon(Icons.note, color: Colors.grey.shade600),
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 8),
+                      icon: Icon(Icons.note,
+                          color: Colors.grey.shade600, size: 16),
                     ),
+                    controller: TextEditingController(text: _note),
                     onChanged: (value) {
                       setState(() {
                         _note = value;
@@ -610,12 +738,20 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                     ),
             ),
           ] else ...[
-            // Transfer UI (simple for now)
+            // Transfer UI - simplified
             Expanded(
               child: Center(
-                child: Text(
-                  'Transfer functionality coming soon',
-                  style: TextStyle(color: Colors.grey.shade600),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.swap_vert,
+                        size: 64, color: Colors.grey.shade300),
+                    SizedBox(height: 16),
+                    Text(
+                      'Transfer between accounts is disabled',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                  ],
                 ),
               ),
             ),

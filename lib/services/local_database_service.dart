@@ -1,12 +1,15 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../models/transaction_model.dart';
 import '../models/category_model.dart';
 import '../models/budget_model.dart';
 import '../models/recurring_transaction_model.dart';
+import '../models/account_model.dart';
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 
 class LocalDatabaseService {
   static final LocalDatabaseService _instance =
@@ -26,7 +29,7 @@ class LocalDatabaseService {
     String path = join(await getDatabasesPath(), 'hisaab.db');
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDb,
       onUpgrade: _upgradeDb,
     );
@@ -61,6 +64,23 @@ class LocalDatabaseService {
       )
     ''');
 
+    // Create accounts table
+    await db.execute('''
+      CREATE TABLE accounts(
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        balance REAL NOT NULL,
+        iconCodePoint INTEGER NOT NULL,
+        iconFontFamily TEXT,
+        colorValue INTEGER NOT NULL,
+        userId TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT,
+        FOREIGN KEY (userId) REFERENCES users (uid)
+      )
+    ''');
+
     // Create transactions table
     await db.execute('''
       CREATE TABLE transactions(
@@ -70,12 +90,17 @@ class LocalDatabaseService {
         date TEXT NOT NULL,
         categoryId TEXT NOT NULL,
         isExpense INTEGER NOT NULL,
+        type TEXT,
         userId TEXT NOT NULL,
         notes TEXT,
+        accountId TEXT,
+        toAccountId TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT,
         FOREIGN KEY (categoryId) REFERENCES categories (id),
-        FOREIGN KEY (userId) REFERENCES users (uid)
+        FOREIGN KEY (userId) REFERENCES users (uid),
+        FOREIGN KEY (accountId) REFERENCES accounts (id),
+        FOREIGN KEY (toAccountId) REFERENCES accounts (id)
       )
     ''');
 
@@ -147,6 +172,30 @@ class LocalDatabaseService {
           FOREIGN KEY (userId) REFERENCES users (uid)
         )
       ''');
+    }
+
+    if (oldVersion < 3) {
+      // Create accounts table for users upgrading from version 2
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS accounts(
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          balance REAL NOT NULL,
+          iconCodePoint INTEGER NOT NULL,
+          iconFontFamily TEXT,
+          colorValue INTEGER NOT NULL,
+          userId TEXT NOT NULL,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT,
+          FOREIGN KEY (userId) REFERENCES users (uid)
+        )
+      ''');
+
+      // Alter transactions table to add account-related fields
+      await db.execute('ALTER TABLE transactions ADD COLUMN type TEXT');
+      await db.execute('ALTER TABLE transactions ADD COLUMN accountId TEXT');
+      await db.execute('ALTER TABLE transactions ADD COLUMN toAccountId TEXT');
     }
   }
 
@@ -434,7 +483,31 @@ class LocalDatabaseService {
     );
 
     return List.generate(maps.length, (i) {
-      return TransactionModel.fromMap(maps[i]);
+      return TransactionModel(
+        id: maps[i]['id'],
+        title: maps[i]['title'],
+        amount: maps[i]['amount'],
+        date: DateTime.parse(maps[i]['date']),
+        categoryId: maps[i]['categoryId'],
+        isExpense: maps[i]['isExpense'] == 1,
+        type: maps[i]['type'] != null
+            ? TransactionType.values.firstWhere(
+                (e) => e.toString().split('.').last == maps[i]['type'],
+                orElse: () => maps[i]['isExpense'] == 1
+                    ? TransactionType.expense
+                    : TransactionType.income)
+            : maps[i]['isExpense'] == 1
+                ? TransactionType.expense
+                : TransactionType.income,
+        userId: maps[i]['userId'],
+        notes: maps[i]['notes'],
+        accountId: maps[i]['accountId'],
+        toAccountId: maps[i]['toAccountId'],
+        createdAt: DateTime.parse(maps[i]['createdAt']),
+        updatedAt: maps[i]['updatedAt'] != null
+            ? DateTime.parse(maps[i]['updatedAt'])
+            : null,
+      );
     });
   }
 
@@ -457,6 +530,15 @@ class LocalDatabaseService {
         date: DateTime.parse(maps[i]['date']),
         categoryId: maps[i]['categoryId'],
         isExpense: maps[i]['isExpense'] == 1,
+        type: maps[i]['type'] != null
+            ? TransactionType.values.firstWhere(
+                (e) => e.toString().split('.').last == maps[i]['type'],
+                orElse: () => maps[i]['isExpense'] == 1
+                    ? TransactionType.expense
+                    : TransactionType.income)
+            : maps[i]['isExpense'] == 1
+                ? TransactionType.expense
+                : TransactionType.income,
         userId: maps[i]['userId'],
         notes: maps[i]['notes'],
         createdAt: DateTime.parse(maps[i]['createdAt']),
@@ -805,5 +887,208 @@ class LocalDatabaseService {
       print('Error resetting transaction data: $e');
       throw Exception('Failed to reset transaction data: $e');
     }
+  }
+
+  // ACCOUNTS
+
+  // Initialize default accounts for a user
+  Future<void> initializeDefaultAccounts(String userId) async {
+    final db = await database;
+
+    // First check if there are already accounts for this user
+    final count = Sqflite.firstIntValue(await db.rawQuery(
+      'SELECT COUNT(*) FROM accounts WHERE userId = ?',
+      [userId],
+    ));
+
+    if (count == 0) {
+      // Add default accounts
+      final defaultAccounts = AccountModel.defaultAccounts(userId);
+      for (var account in defaultAccounts) {
+        await db.insert(
+          'accounts',
+          account.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    }
+  }
+
+  // Get all accounts for a user
+  Future<List<AccountModel>> getAccounts(String userId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'accounts',
+      where: 'userId = ?',
+      whereArgs: [userId],
+      orderBy: 'name ASC',
+    );
+
+    return List.generate(maps.length, (i) {
+      return AccountModel.fromMap(maps[i]);
+    });
+  }
+
+  // Get account by ID
+  Future<AccountModel?> getAccountById(String id, {Transaction? txn}) async {
+    final db = txn ?? await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'accounts',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    if (maps.isNotEmpty) {
+      return AccountModel.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  // Add an account
+  Future<String> addAccount(AccountModel account) async {
+    final db = await database;
+    await db.insert(
+      'accounts',
+      account.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return account.id;
+  }
+
+  // Update an account
+  Future<void> updateAccount(AccountModel account) async {
+    final db = await database;
+    await db.update(
+      'accounts',
+      account.toMap(),
+      where: 'id = ?',
+      whereArgs: [account.id],
+    );
+  }
+
+  // Delete an account
+  Future<void> deleteAccount(String id) async {
+    final db = await database;
+
+    // Check if account has transactions
+    final transactionCount = Sqflite.firstIntValue(await db.rawQuery(
+      'SELECT COUNT(*) FROM transactions WHERE accountId = ? OR toAccountId = ?',
+      [id, id],
+    ));
+
+    if (transactionCount! > 0) {
+      throw Exception('Cannot delete account with associated transactions');
+    }
+
+    await db.delete(
+      'accounts',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Update account balance
+  Future<void> updateAccountBalance(String accountId, double newBalance) async {
+    final db = await database;
+    await db.update(
+      'accounts',
+      {'balance': newBalance, 'updatedAt': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [accountId],
+    );
+  }
+
+  // TRANSFERS
+
+  // Create a transfer between accounts
+  Future<bool> createTransfer({
+    required String fromAccountId,
+    required String toAccountId,
+    required double amount,
+    required String title,
+    required String userId,
+    String? notes,
+  }) async {
+    final db = await database;
+
+    try {
+      // Begin transaction
+      return await db.transaction((txn) async {
+        // Get source and destination accounts using the transaction object
+        final sourceAccount = await getAccountById(fromAccountId, txn: txn);
+        final destAccount = await getAccountById(toAccountId, txn: txn);
+
+        if (sourceAccount == null || destAccount == null) {
+          throw Exception('Source or destination account not found');
+        }
+
+        // Check if there's enough balance in the source account
+        if (sourceAccount.balance < amount) {
+          throw Exception('Insufficient balance in source account');
+        }
+
+        // Create the transfer transaction
+        final transferTx = TransactionModel.createTransfer(
+          title: title,
+          amount: amount,
+          date: DateTime.now(),
+          userId: userId,
+          fromAccountId: fromAccountId,
+          toAccountId: toAccountId,
+          notes: notes,
+        );
+
+        // Insert the transfer transaction
+        await txn.insert(
+          'transactions',
+          transferTx.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+
+        // Update source account balance
+        await txn.update(
+          'accounts',
+          {
+            'balance': sourceAccount.balance - amount,
+            'updatedAt': DateTime.now().toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [fromAccountId],
+        );
+
+        // Update destination account balance
+        await txn.update(
+          'accounts',
+          {
+            'balance': destAccount.balance + amount,
+            'updatedAt': DateTime.now().toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [toAccountId],
+        );
+
+        return true;
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error creating transfer: $e');
+      }
+      return false;
+    }
+  }
+
+  // Get transfers for a user
+  Future<List<TransactionModel>> getTransfers(String userId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'transactions',
+      where: 'userId = ? AND type = ?',
+      whereArgs: [userId, 'transfer'],
+      orderBy: 'date DESC',
+    );
+
+    return List.generate(maps.length, (i) {
+      return TransactionModel.fromMap(maps[i]);
+    });
   }
 }

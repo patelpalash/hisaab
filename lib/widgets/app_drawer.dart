@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../screens/export_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({Key? key}) : super(key: key);
@@ -115,6 +116,18 @@ class AppDrawer extends StatelessWidget {
                 ),
                 _buildMenuItem(
                   context,
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Accounts',
+                  // TODO: Create accounts screen
+                ),
+                _buildMenuItem(
+                  context,
+                  icon: Icons.swap_horiz_outlined,
+                  title: 'Transfer Money',
+                  routeName: '/transfer',
+                ),
+                _buildMenuItem(
+                  context,
                   icon: Icons.category_outlined,
                   title: 'Categories',
                 ),
@@ -123,6 +136,18 @@ class AppDrawer extends StatelessWidget {
                   icon: Icons.account_circle_outlined,
                   title: 'Profile',
                   routeName: '/profile',
+                ),
+                _buildMenuItem(
+                  context,
+                  icon: Icons.file_download_outlined,
+                  title: 'Export & Share',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const ExportScreen(),
+                      ),
+                    );
+                  },
                 ),
 
                 Divider(color: Colors.white.withOpacity(0.2), thickness: 1),
@@ -146,9 +171,6 @@ class AppDrawer extends StatelessWidget {
                     icon: Icons.people_outline, title: 'Multi-user Support'),
                 _buildPremiumFeature(context,
                     icon: Icons.cloud_outlined, title: 'Cloud Sync'),
-                _buildPremiumFeature(context,
-                    icon: Icons.file_download_outlined,
-                    title: 'Export Reports'),
                 _buildPremiumFeature(context,
                     icon: Icons.message_outlined, title: 'SMS Parsing'),
 

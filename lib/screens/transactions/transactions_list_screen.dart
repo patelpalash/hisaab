@@ -6,6 +6,7 @@ import '../../models/transaction_model.dart';
 import '../../models/category_model.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/category_provider.dart';
+import '../../providers/account_provider.dart';
 import 'transaction_detail_screen.dart';
 import '../add_transaction_screen.dart';
 

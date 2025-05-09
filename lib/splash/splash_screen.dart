@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import '../auth/login_page.dart';
+import '../providers/auth_provider.dart';
+import 'package:flutter/foundation.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -24,11 +27,48 @@ class _SplashScreenState extends State<SplashScreen>
     );
     _animation = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
     _controller.forward();
-    Timer(const Duration(seconds: 3), () {
+
+    // Use a slightly longer delay to ensure Firebase is fully initialized
+    Timer(const Duration(seconds: 4), () {
+      _checkAuthAndNavigate();
+    });
+  }
+
+  // Check auth state and navigate accordingly
+  void _checkAuthAndNavigate() {
+    if (kDebugMode) {
+      print('Checking auth state and navigating...');
+    }
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+      if (authProvider.isAuthenticated) {
+        if (kDebugMode) {
+          print('User is authenticated, navigating to home page');
+        }
+
+        // Handle navigation based on auth state
+        Navigator.of(context).pushReplacementNamed('/home');
+      } else {
+        if (kDebugMode) {
+          print('User is not authenticated, navigating to login page');
+        }
+
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error navigating from splash screen: $e');
+      }
+
+      // If there's an error, default to login page
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const LoginPage()),
       );
-    });
+    }
   }
 
   @override

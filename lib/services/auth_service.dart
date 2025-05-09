@@ -11,6 +11,22 @@ class AuthService {
 
   AuthService() {
     _checkConnectivity();
+    _setupPersistence();
+  }
+
+  // Set up Firebase persistence
+  Future<void> _setupPersistence() async {
+    try {
+      // Set to no persistence to avoid caching issues during testing
+      await _auth.setPersistence(Persistence.LOCAL);
+      if (kDebugMode) {
+        print('Firebase persistence set to LOCAL');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error setting Firebase persistence: $e');
+      }
+    }
   }
 
   // Check internet connectivity
@@ -50,9 +66,35 @@ class AuthService {
     return UserModel.empty();
   }
 
+  // Force clear auth state
+  Future<void> clearAuthState() async {
+    try {
+      if (kDebugMode) {
+        print('Clearing Firebase auth state...');
+      }
+
+      // Force token refresh
+      if (_auth.currentUser != null) {
+        await _auth.currentUser!.reload();
+        await _auth.currentUser!.getIdToken(true);
+      }
+
+      if (kDebugMode) {
+        print('Auth state cleared');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error clearing auth state: $e');
+      }
+    }
+  }
+
   // Sign in with email and password
   Future<UserModel> signInWithEmailAndPassword(
       String email, String password) async {
+    // Clear any stale auth state first
+    await clearAuthState();
+
     try {
       final UserCredential result = await _auth.signInWithEmailAndPassword(
         email: email,
@@ -80,6 +122,9 @@ class AuthService {
   // Sign up with email and password
   Future<UserModel> signUpWithEmailAndPassword(
       String email, String password, String name) async {
+    // Clear any stale auth state first
+    await clearAuthState();
+
     try {
       final UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -109,9 +154,24 @@ class AuthService {
 
   // Sign in with Google
   Future<UserModel> signInWithGoogle() async {
+    // Clear any stale auth state first
+    await clearAuthState();
+
     try {
+      // First sign out of Google to clear any previous sessions
+      try {
+        await _googleSignIn.signOut();
+      } catch (_) {}
+
       // Try using the Firebase auth provider method
       final GoogleAuthProvider googleProvider = GoogleAuthProvider();
+
+      // Add some additional parameters to prevent caching
+      googleProvider.setCustomParameters({
+        'prompt': 'select_account',
+        'login_hint': DateTime.now().millisecondsSinceEpoch.toString(),
+      });
+
       final UserCredential userCredential =
           await _auth.signInWithProvider(googleProvider);
 
@@ -135,14 +195,65 @@ class AuthService {
 
   // Sign out
   Future<void> signOut() async {
+    if (kDebugMode) {
+      print('Starting sign out process...');
+    }
+
+    // First try to sign out from Google
     try {
-      await _auth.signOut();
+      if (kDebugMode) {
+        print('Signing out from Google...');
+      }
       await _googleSignIn.signOut();
+      if (kDebugMode) {
+        print('Google sign out successful');
+      }
+    } catch (e) {
+      // Continue even if Google sign out fails
+      if (kDebugMode) {
+        print('Google sign out error (continuing anyway): $e');
+      }
+    }
+
+    // Then sign out from Firebase
+    try {
+      if (kDebugMode) {
+        print('Signing out from Firebase...');
+      }
+      await _auth.signOut();
+
+      // Clear any cached state
+      await clearCaches();
+
+      if (kDebugMode) {
+        print('Firebase sign out successful');
+      }
     } catch (e) {
       if (kDebugMode) {
-        print('Sign out error: $e');
+        print('Firebase sign out error: $e');
       }
       rethrow;
+    }
+  }
+
+  // Clean up any caches
+  Future<void> clearCaches() async {
+    try {
+      // Wait for a moment to ensure Firebase clears its internal state
+      await Future.delayed(Duration(milliseconds: 500));
+
+      // Retry sign out to be sure
+      try {
+        await _auth.signOut();
+      } catch (_) {}
+
+      if (kDebugMode) {
+        print('Auth caches cleared');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error clearing caches: $e');
+      }
     }
   }
 

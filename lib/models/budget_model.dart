@@ -128,3 +128,46 @@ class BudgetModel {
     );
   }
 }
+
+class Budget {
+  final String id;
+  final String userId;
+  final String category;
+  final double limit;
+  final double spent;
+  final DateTime month;
+
+  Budget({
+    required this.id,
+    required this.userId,
+    required this.category,
+    required this.limit,
+    required this.spent,
+    required this.month,
+  });
+
+  // Create from map (e.g., from database)
+  factory Budget.fromMap(Map<String, dynamic> map) {
+    return Budget(
+      id: map['id'] ?? '',
+      userId: map['userId'] ?? '',
+      category: map['category'] ?? '',
+      limit: map['limit']?.toDouble() ?? 0.0,
+      spent: map['spent']?.toDouble() ?? 0.0,
+      month:
+          map['month'] != null ? DateTime.parse(map['month']) : DateTime.now(),
+    );
+  }
+
+  // Convert to map (e.g., for database)
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'userId': userId,
+      'category': category,
+      'limit': limit,
+      'spent': spent,
+      'month': month.toIso8601String(),
+    };
+  }
+}

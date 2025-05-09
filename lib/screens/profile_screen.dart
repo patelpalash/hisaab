@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/transaction_provider.dart';
+import '../auth/login_page.dart';
 
 class ProfileScreen extends StatelessWidget {
   static const routeName = '/profile';
@@ -12,89 +13,143 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;
+    final primaryColor = Theme.of(context).primaryColor;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
+        elevation: 0,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Profile picture
-            CircleAvatar(
-              radius: 50,
-              backgroundImage:
-                  user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
-              child: user.photoUrl == null
-                  ? Text(
-                      user.name.isNotEmpty
-                          ? user.name[0].toUpperCase()
-                          : user.email[0].toUpperCase(),
-                      style: const TextStyle(fontSize: 40),
-                    )
-                  : null,
-            ),
-            const SizedBox(height: 16),
+            // Profile header with background
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 20),
+                  // Profile picture
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: primaryColor,
+                    backgroundImage: user.photoUrl != null
+                        ? NetworkImage(user.photoUrl!)
+                        : null,
+                    child: user.photoUrl == null
+                        ? Text(
+                            user.name.isNotEmpty
+                                ? user.name[0].toUpperCase()
+                                : user.email[0].toUpperCase(),
+                            style: const TextStyle(
+                                fontSize: 40, color: Colors.white),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
 
-            // User name
-            Text(
-              user.name,
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 8),
+                  // User name
+                  Text(
+                    user.name,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
 
-            // User email
-            Text(
-              user.email,
-              style: Theme.of(context).textTheme.bodyLarge,
+                  // User email
+                  Text(
+                    user.email,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Colors.grey[700],
+                        ),
+                  ),
+                ],
+              ),
             ),
+
             const SizedBox(height: 32),
 
-            // Account information section
-            const Text(
-              'Account Information',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
+            // Settings section
+            _buildSectionHeader(context, 'Settings'),
 
-            // Account information items
-            _buildInfoItem(context, 'Account ID', user.uid),
-            _buildInfoItem(
-                context, 'Account Created', user.createdAt.toString()),
-            const Divider(),
-
-            // Data Management Section
-            const Text(
-              'Data Management',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            // Settings list items
+            _buildListItem(
+              context,
+              icon: Icons.palette,
+              title: 'Appearance',
+              subtitle: 'Theme, colors, and visual preferences',
+              onTap: () {
+                // TODO: Implement theme settings
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Theme settings coming soon')),
+                );
+              },
             ),
-            const SizedBox(height: 16),
 
-            // Reset Data Button
-            ElevatedButton.icon(
-              onPressed: () => _showResetConfirmation(context),
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reset All Transaction Data'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
+            _buildListItem(
+              context,
+              icon: Icons.notifications,
+              title: 'Notifications',
+              subtitle: 'Configure alerts and reminders',
+              onTap: () {
+                // TODO: Implement notification settings
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Notification settings coming soon')),
+                );
+              },
             ),
+
             const SizedBox(height: 16),
+            _buildSectionHeader(context, 'Data Management'),
+
+            // Reset Data Button - themed as list item
+            _buildListItem(
+              context,
+              icon: Icons.refresh,
+              title: 'Reset All Transaction Data',
+              subtitle: 'Delete all transactions permanently',
+              iconColor: Colors.red,
+              onTap: () => _showResetConfirmation(context),
+            ),
+
+            const SizedBox(height: 32),
 
             // Log out button
-            ElevatedButton.icon(
-              onPressed: () => _showLogoutConfirmation(context),
-              icon: const Icon(Icons.logout),
-              label: const Text('Log Out'),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _showLogoutConfirmation(context),
+                icon: const Icon(Icons.logout),
+                label: const Text('Log Out'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // App version
+            Text(
+              'Hisaab v1.0.0',
+              style: TextStyle(
+                color: Colors.grey[500],
+                fontSize: 12,
+              ),
             ),
           ],
         ),
@@ -102,25 +157,54 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoItem(BuildContext context, String label, String value) {
+  Widget _buildSectionHeader(BuildContext context, String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            label,
-            style: const TextStyle(
+            title,
+            style: TextStyle(
+              fontSize: 18,
               fontWeight: FontWeight.bold,
+              color: Theme.of(context).primaryColor,
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              color: Colors.grey[600],
+          const SizedBox(width: 8),
+          Expanded(
+            child: Divider(
+              color: Theme.of(context).primaryColor.withOpacity(0.3),
+              thickness: 1,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildListItem(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    Color? iconColor,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ListTile(
+        leading: Icon(
+          icon,
+          color: iconColor ?? Theme.of(context).primaryColor,
+        ),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: onTap,
       ),
     );
   }
@@ -137,11 +221,46 @@ class ProfileScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              // Close the dialog
               Navigator.of(ctx).pop();
-              Provider.of<AuthProvider>(context, listen: false).signOut();
+
+              // Show a loading indicator
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
+
+              try {
+                // Sign out
+                await Provider.of<AuthProvider>(context, listen: false)
+                    .signOut();
+
+                // Close loading indicator and navigate after a short delay
+                Navigator.of(context).pop();
+
+                // Add a slight delay before navigation to allow Firebase to clean up
+                await Future.delayed(Duration(milliseconds: 500));
+
+                // Navigate to login page and remove all previous routes
+                Navigator.of(context).pushNamedAndRemoveUntil(
+                  '/login', // Make sure you have this route defined
+                  (route) => false,
+                );
+              } catch (e) {
+                // Close loading indicator if still showing
+                Navigator.of(context).pop();
+
+                // Show error message
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error during logout: $e')),
+                );
+              }
             },
-            child: const Text('Log Out'),
+            child: const Text('Log Out', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),

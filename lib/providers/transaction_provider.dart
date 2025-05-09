@@ -298,6 +298,50 @@ class TransactionProvider with ChangeNotifier {
         .fold(0, (sum, transaction) => sum + transaction.amount);
   }
 
+  // Calculate income for a specific account
+  double calculateAccountIncome(String accountId) {
+    return _transactions
+        .where((transaction) =>
+            !transaction.isExpense && transaction.accountId == accountId)
+        .fold(0, (sum, transaction) => sum + transaction.amount);
+  }
+
+  // Calculate expenses for a specific account
+  double calculateAccountExpenses(String accountId) {
+    return _transactions
+        .where((transaction) =>
+            transaction.isExpense && transaction.accountId == accountId)
+        .fold(0, (sum, transaction) => sum + transaction.amount);
+  }
+
+  // Get transactions for a specific account
+  List<TransactionModel> getTransactionsForAccount(String accountId) {
+    return _transactions
+        .where((transaction) =>
+            transaction.accountId == accountId ||
+            transaction.toAccountId == accountId)
+        .toList();
+  }
+
+  // Calculate account-specific balance (based on transactions, not the stored balance)
+  double calculateAccountBalance(String accountId) {
+    double income = calculateAccountIncome(accountId);
+    double expense = calculateAccountExpenses(accountId);
+
+    // Also consider transfers
+    double transfersIn = _transactions
+        .where((transaction) =>
+            transaction.isTransfer && transaction.toAccountId == accountId)
+        .fold(0, (sum, transaction) => sum + transaction.amount);
+
+    double transfersOut = _transactions
+        .where((transaction) =>
+            transaction.isTransfer && transaction.accountId == accountId)
+        .fold(0, (sum, transaction) => sum + transaction.amount);
+
+    return income - expense + transfersIn - transfersOut;
+  }
+
   // Dispose of resources
   @override
   void dispose() {

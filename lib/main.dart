@@ -12,18 +12,23 @@ import 'auth/login_page.dart';
 import 'models/user_model.dart';
 import 'models/transaction_model.dart';
 import 'models/category_model.dart';
+import 'models/account_model.dart';
 import 'providers/auth_provider.dart';
 import 'providers/transaction_provider.dart';
 import 'providers/category_provider.dart';
 import 'providers/budget_provider.dart';
+import 'providers/account_provider.dart';
 import 'screens/add_transaction_screen.dart';
 import 'screens/transactions/transactions_list_screen.dart';
 import 'screens/transactions/transaction_detail_screen.dart';
 import 'screens/budget/budget_list_screen.dart';
+import 'screens/transfer_screen.dart';
 import 'widgets/financial_summary_chart.dart';
 import 'widgets/app_drawer.dart';
 import 'screens/recurring_transactions_screen.dart';
 import 'screens/profile_screen.dart';
+import 'providers/export_provider.dart';
+import 'screens/export_screen.dart';
 
 // App theme colors
 final Color primaryColor = Color(0xFF6C63FF); // Main light purple color
@@ -56,6 +61,8 @@ class _HomePageState extends State<HomePage> {
             .initTransactions(userId);
         Provider.of<CategoryProvider>(context, listen: false)
             .initCategories(userId);
+        Provider.of<AccountProvider>(context, listen: false)
+            .initAccounts(userId);
       }
     });
   }
@@ -90,443 +97,472 @@ class _HomePageState extends State<HomePage> {
     // Get category data
     final expenseCategories = categoryProvider.expenseCategories;
 
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      drawer: AppDrawer(),
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            // Modern App Bar with transparent styling
-            SliverAppBar(
-              floating: true,
-              pinned: true,
-              backgroundColor: lightPurple,
-              elevation: 0,
-              toolbarHeight: 80,
-              title: Padding(
-                padding: const EdgeInsets.only(left: 8.0, top: 8.0),
-                child: Text(
-                  'Hisaab',
-                  style: GoogleFonts.poppins(
-                    textStyle: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1.2,
-                      color: Colors.white,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => TransactionProvider()),
+        ChangeNotifierProvider(create: (_) => CategoryProvider()),
+        ChangeNotifierProvider(create: (_) => BudgetProvider()),
+        ChangeNotifierProvider(create: (_) => AccountProvider()),
+        ChangeNotifierProvider(create: (_) => ExportProvider()),
+      ],
+      child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        drawer: AppDrawer(),
+        body: SafeArea(
+          child: CustomScrollView(
+            slivers: [
+              // Modern App Bar with transparent styling
+              SliverAppBar(
+                floating: true,
+                pinned: true,
+                backgroundColor: lightPurple,
+                elevation: 0,
+                toolbarHeight: 80,
+                title: Padding(
+                  padding: const EdgeInsets.only(left: 8.0, top: 8.0),
+                  child: Text(
+                    'Hisaab',
+                    style: GoogleFonts.poppins(
+                      textStyle: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.2,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              leading: Builder(
-                builder: (context) => IconButton(
-                  icon: Icon(Icons.menu, color: Colors.white, size: 28),
-                  onPressed: () => Scaffold.of(context).openDrawer(),
+                leading: Builder(
+                  builder: (context) => IconButton(
+                    icon: Icon(Icons.menu, color: Colors.white, size: 28),
+                    onPressed: () => Scaffold.of(context).openDrawer(),
+                  ),
                 ),
-              ),
-              actions: [
-                // Notification Icon
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
+                actions: [
+                  // Notification Icon
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon:
+                            Icon(Icons.notifications_none, color: Colors.white),
+                        onPressed: () {
+                          // Show notifications
+                        },
+                      ),
                     ),
-                    child: IconButton(
-                      icon: Icon(Icons.notifications_none, color: Colors.white),
-                      onPressed: () {
-                        // Show notifications
+                  ),
+                  // Profile Icon/Avatar - Shows first letter of user's name
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16.0, left: 8.0),
+                    child: GestureDetector(
+                      onTap: () {
+                        // Show debug options in development mode
+                        if (kDebugMode) {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Development Options'),
+                              content: const Text(
+                                  'These options are only available in debug mode.'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    // Debug transactions view was removed
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Debug page was removed'),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  },
+                                  child: const Text('Debug Transactions'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Close'),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
                       },
-                    ),
-                  ),
-                ),
-                // Profile Icon/Avatar - Shows first letter of user's name
-                Padding(
-                  padding: const EdgeInsets.only(right: 16.0, left: 8.0),
-                  child: GestureDetector(
-                    onTap: () {
-                      // Show debug options in development mode
-                      if (kDebugMode) {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Development Options'),
-                            content: const Text(
-                                'These options are only available in debug mode.'),
-                            actions: [
-                              TextButton(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  // Debug transactions view was removed
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Debug page was removed'),
-                                      duration: Duration(seconds: 2),
-                                    ),
-                                  );
-                                },
-                                child: const Text('Debug Transactions'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Close'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                    },
-                    child: CircleAvatar(
-                      backgroundColor: Colors.white,
-                      child: Text(
-                        user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
-                        style: TextStyle(
-                          color: lightPurple,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            // Dashboard Content
-            SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Balance Card (Similar to the image)
-                  Container(
-                    margin: const EdgeInsets.all(16),
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          lightPurple,
-                          lightPurpleFaded,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: lightPurple.withOpacity(0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Current Balance',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.8),
-                                fontSize: 16,
-                              ),
-                            ),
-                            Icon(
-                              Icons.more_horiz,
-                              color: Colors.white.withOpacity(0.8),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          _formatCurrency(balance),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            // Income summary
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.arrow_downward,
-                                      color: Colors.green.shade300,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      'Income',
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.8),
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  _formatCurrency(totalIncome),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            // Expense summary
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.arrow_upward,
-                                      color: Colors.red.shade300,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      'Expense',
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.8),
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  _formatCurrency(totalExpenses),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Quick Actions - like in the image
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildQuickAction(
-                          icon: Icons.add,
-                          iconColor: Colors.green,
-                          backgroundColor: Colors.green.withOpacity(0.1),
-                          label: 'Add Income',
-                          onTap: () {
-                            // Add income action
-                            _showAddTransactionDialog(context, false);
-                          },
-                        ),
-                        _buildQuickAction(
-                          icon: Icons.remove,
-                          iconColor: Colors.red,
-                          backgroundColor: Colors.red.withOpacity(0.1),
-                          label: 'Add Expense',
-                          onTap: () {
-                            // Add expense action
-                            _showAddTransactionDialog(context, true);
-                          },
-                        ),
-                        _buildQuickAction(
-                          icon: Icons.bar_chart,
-                          iconColor: Colors.blue,
-                          backgroundColor: Colors.blue.withOpacity(0.1),
-                          label: 'Reports',
-                          onTap: () {
-                            // Show reports
-                          },
-                        ),
-                        _buildQuickAction(
-                          icon: Icons.pie_chart,
-                          iconColor: Colors.purple,
-                          backgroundColor: Colors.purple.withOpacity(0.1),
-                          label: 'Budget',
-                          onTap: () {
-                            // Show budget page
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Financial Summary Chart (replacing Categories)
-                  Padding(
-                    padding: const EdgeInsets.only(
-                        left: 16.0, right: 16.0, top: 24.0, bottom: 12.0),
-                    child: FinancialSummaryChart(
-                      income: totalIncome,
-                      expense: totalExpenses,
-                      balance: balance,
-                    ),
-                  ),
-
-                  // Recent Transactions section header with "View All" text
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Recent Transactions',
+                      child: CircleAvatar(
+                        backgroundColor: Colors.white,
+                        child: Text(
+                          user.name.isNotEmpty
+                              ? user.name[0].toUpperCase()
+                              : 'U',
                           style: TextStyle(
-                            fontSize: 22,
+                            color: lightPurple,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        TextButton(
-                          onPressed: () {
-                            // View all transactions
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => TransactionsListScreen(),
-                              ),
-                            );
-                          },
-                          child: Text(
-                            'View All',
-                            style: TextStyle(
-                              color: lightPurple,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
 
-            // Transaction List
-            recentTransactions.isEmpty
-                ? SliverToBoxAdapter(
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32.0),
-                        child: Column(
-                          children: [
-                            Icon(Icons.receipt_long,
-                                size: 64, color: Colors.grey.shade400),
-                            SizedBox(height: 16),
-                            Text(
-                              'No transactions yet',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Add your first transaction using the buttons above',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
+              // Dashboard Content
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Balance Card (Similar to the image)
+                    Container(
+                      margin: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            lightPurple,
+                            lightPurpleFaded,
                           ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: lightPurple.withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Current Balance',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Icon(
+                                Icons.more_horiz,
+                                color: Colors.white.withOpacity(0.8),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            _formatCurrency(balance),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              // Income summary
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.arrow_downward,
+                                        color: Colors.green.shade300,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        'Income',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.8),
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    _formatCurrency(totalIncome),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              // Expense summary
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.arrow_upward,
+                                        color: Colors.red.shade300,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        'Expense',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.8),
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    _formatCurrency(totalExpenses),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                  )
-                : SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        // Find the category for this transaction
-                        final transaction = recentTransactions[index];
-                        final category = categoryProvider
-                            .getCategoryById(transaction.categoryId);
 
-                        return _buildTransactionItem(transaction, category);
-                      },
-                      childCount: recentTransactions.length,
+                    // Quick Actions - like in the image
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildQuickAction(
+                            icon: Icons.add,
+                            iconColor: Colors.green,
+                            backgroundColor: Colors.green.withOpacity(0.1),
+                            label: 'Add Income',
+                            onTap: () {
+                              // Add income action
+                              _showAddTransactionDialog(context, false);
+                            },
+                          ),
+                          _buildQuickAction(
+                            icon: Icons.remove,
+                            iconColor: Colors.red,
+                            backgroundColor: Colors.red.withOpacity(0.1),
+                            label: 'Add Expense',
+                            onTap: () {
+                              // Add expense action
+                              _showAddTransactionDialog(context, true);
+                            },
+                          ),
+                          _buildQuickAction(
+                            icon: Icons.swap_horiz,
+                            iconColor: Colors.orange,
+                            backgroundColor: Colors.orange.withOpacity(0.1),
+                            label: 'Transfer',
+                            onTap: () {
+                              // Show transfer screen
+                              Navigator.of(context).pushNamed('/transfer');
+                            },
+                          ),
+                          _buildQuickAction(
+                            icon: Icons.pie_chart,
+                            iconColor: Colors.purple,
+                            backgroundColor: Colors.purple.withOpacity(0.1),
+                            label: 'Budget',
+                            onTap: () {
+                              // Show budget page
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => BudgetListScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
 
-            // Bottom padding
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 80),
+                    // Financial Summary Chart (replacing Categories)
+                    Padding(
+                      padding: const EdgeInsets.only(
+                          left: 16.0, right: 16.0, top: 24.0, bottom: 12.0),
+                      child: FinancialSummaryChart(
+                        income: totalIncome,
+                        expense: totalExpenses,
+                        balance: balance,
+                        accounts:
+                            Provider.of<AccountProvider>(context).accounts,
+                      ),
+                    ),
+
+                    // Recent Transactions section header with "View All" text
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Recent Transactions',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              // View all transactions
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      TransactionsListScreen(),
+                                ),
+                              );
+                            },
+                            child: Text(
+                              'View All',
+                              style: TextStyle(
+                                color: lightPurple,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Transaction List
+              recentTransactions.isEmpty
+                  ? SliverToBoxAdapter(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32.0),
+                          child: Column(
+                            children: [
+                              Icon(Icons.receipt_long,
+                                  size: 64, color: Colors.grey.shade400),
+                              SizedBox(height: 16),
+                              Text(
+                                'No transactions yet',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                'Add your first transaction using the buttons above',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  : SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          // Find the category for this transaction
+                          final transaction = recentTransactions[index];
+                          final category = categoryProvider
+                              .getCategoryById(transaction.categoryId);
+
+                          return _buildTransactionItem(transaction, category);
+                        },
+                        childCount: recentTransactions.length,
+                      ),
+                    ),
+
+              // Bottom padding
+              const SliverToBoxAdapter(
+                child: SizedBox(height: 80),
+              ),
+            ],
+          ),
+        ),
+
+        // Floating action button for adding transactions - like in the image
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            // Show add transaction dialog, default to expense
+            _showAddTransactionDialog(context, true);
+          },
+          backgroundColor: lightPurple,
+          child: const Icon(Icons.add),
+        ),
+
+        // Bottom navigation bar with Home, Transactions, Budget, Profile tabs
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: (index) {
+            setState(() {
+              _selectedIndex = index;
+            });
+
+            // Navigate to screens based on index
+            if (index == 1) {
+              // Transactions tab
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => TransactionsListScreen(),
+                ),
+              );
+            } else if (index == 2) {
+              // Budget tab
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => BudgetListScreen(),
+                ),
+              );
+            } else if (index == 3) {
+              // Profile tab
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const ProfileScreen(),
+                ),
+              );
+            }
+          },
+          selectedItemColor: lightPurple,
+          unselectedItemColor: Colors.grey,
+          type: BottomNavigationBarType.fixed,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.receipt_long),
+              label: 'Transactions',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.pie_chart),
+              label: 'Budget',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person),
+              label: 'Profile',
             ),
           ],
         ),
-      ),
-
-      // Floating action button for adding transactions - like in the image
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // Show add transaction dialog, default to expense
-          _showAddTransactionDialog(context, true);
-        },
-        backgroundColor: lightPurple,
-        child: const Icon(Icons.add),
-      ),
-
-      // Bottom navigation bar with Home, Transactions, Budget, Profile tabs
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-
-          // Navigate to screens based on index
-          if (index == 1) {
-            // Transactions tab
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => TransactionsListScreen(),
-              ),
-            );
-          } else if (index == 2) {
-            // Budget tab
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => BudgetListScreen(),
-              ),
-            );
-          }
-        },
-        selectedItemColor: lightPurple,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long),
-            label: 'Transactions',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.pie_chart),
-            label: 'Budget',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
       ),
     );
   }
@@ -859,6 +895,8 @@ void main() async {
         ChangeNotifierProvider(create: (_) => TransactionProvider()),
         ChangeNotifierProvider(create: (_) => CategoryProvider()),
         ChangeNotifierProvider(create: (_) => BudgetProvider()),
+        ChangeNotifierProvider(create: (_) => AccountProvider()),
+        ChangeNotifierProvider(create: (_) => ExportProvider()),
       ],
       child: const MyApp(),
     ),
@@ -933,6 +971,12 @@ class MyApp extends StatelessWidget {
         '/recurring-transactions': (context) =>
             const RecurringTransactionsScreen(),
         '/profile': (context) => const ProfileScreen(),
+        '/transfer': (context) => const TransferScreen(),
+        '/login': (context) => const LoginPage(),
+        '/home': (context) => HomePage(),
+        AddTransactionScreen.routeName: (context) =>
+            const AddTransactionScreen(),
+        '/export': (context) => const ExportScreen(),
       },
       home: Consumer<AuthProvider>(
         builder: (context, authProvider, _) {
@@ -941,6 +985,13 @@ class MyApp extends StatelessWidget {
           }
 
           if (authProvider.isAuthenticated) {
+            // Initialize accounts for the user
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final userId = authProvider.user.uid;
+              Provider.of<AccountProvider>(context, listen: false)
+                  .initAccounts(userId);
+            });
+
             // User is logged in, show the home page
             return HomePage();
           } else {
