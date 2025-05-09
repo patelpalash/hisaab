@@ -54,6 +54,9 @@ dependencies:
   share_plus: ^7.2.1
   printing: ^5.11.1
   flutter_email_sender: ^6.0.2
+  
+  # Charts packages
+  fl_chart: ^0.66.0
 
 dev_dependencies:
   flutter_test:

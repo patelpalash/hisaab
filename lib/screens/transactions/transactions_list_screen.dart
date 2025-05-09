@@ -7,6 +7,7 @@ import '../../models/category_model.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/category_provider.dart';
 import '../../providers/account_provider.dart';
+import '../statistics_screen.dart';
 import 'transaction_detail_screen.dart';
 import '../add_transaction_screen.dart';
 
@@ -17,26 +18,181 @@ class TransactionsListScreen extends StatefulWidget {
   State<TransactionsListScreen> createState() => _TransactionsListScreenState();
 }
 
-class _TransactionsListScreenState extends State<TransactionsListScreen> {
+class _TransactionsListScreenState extends State<TransactionsListScreen>
+    with SingleTickerProviderStateMixin {
   String _searchQuery = '';
   bool _showExpenses = true;
   bool _showIncome = true;
   DateTime? _startDate;
   DateTime? _endDate;
   List<String> _selectedCategoryIds = [];
+  bool _showSortOptions = false;
+  String _sortBy = 'date'; // Options: date, amount, name
+  bool _sortAscending = false;
+
+  late AnimationController _animationController;
+  late Animation<double> _rotationAnimation;
+  late Animation<double> _scaleAnimation;
 
   final TextEditingController _searchController = TextEditingController();
   final Color primaryColor = const Color(0xFF6C63FF);
+  final ScrollController _scrollController = ScrollController();
+  final FocusNode _searchFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _rotationAnimation = Tween<double>(
+      begin: 0.0,
+      end: 0.125, // 45 degrees
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.1,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
+    _searchFocusNode.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
   // Format currency
   String _formatCurrency(double amount) {
     return '₹${NumberFormat('#,##0.00').format(amount)}';
+  }
+
+  void _showSortingPopup() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Sort Transactions',
+          style: TextStyle(
+            color: primaryColor,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildSortOption(
+              title: 'Date',
+              icon: Icons.calendar_today,
+              sortValue: 'date',
+              onTap: () {
+                setState(() {
+                  if (_sortBy == 'date') {
+                    _sortAscending = !_sortAscending;
+                  } else {
+                    _sortBy = 'date';
+                    _sortAscending = false; // Default to newest first
+                  }
+                });
+                Navigator.pop(context);
+              },
+            ),
+            _buildSortOption(
+              title: 'Amount',
+              icon: Icons.attach_money,
+              sortValue: 'amount',
+              onTap: () {
+                setState(() {
+                  if (_sortBy == 'amount') {
+                    _sortAscending = !_sortAscending;
+                  } else {
+                    _sortBy = 'amount';
+                    _sortAscending = false; // Default to highest first
+                  }
+                });
+                Navigator.pop(context);
+              },
+            ),
+            _buildSortOption(
+              title: 'Name',
+              icon: Icons.sort_by_alpha,
+              sortValue: 'name',
+              onTap: () {
+                setState(() {
+                  if (_sortBy == 'name') {
+                    _sortAscending = !_sortAscending;
+                  } else {
+                    _sortBy = 'name';
+                    _sortAscending = true; // Default to A-Z
+                  }
+                });
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              _showFilterDialog();
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+            ),
+            child: Text('More Filters', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSortOption({
+    required String title,
+    required IconData icon,
+    required String sortValue,
+    required VoidCallback onTap,
+  }) {
+    final bool isSelected = _sortBy == sortValue;
+
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isSelected ? primaryColor : Colors.grey.shade600,
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          color: isSelected ? primaryColor : Colors.black87,
+        ),
+      ),
+      trailing: isSelected
+          ? Icon(
+              _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+              color: primaryColor,
+            )
+          : null,
+      onTap: onTap,
+    );
   }
 
   @override
@@ -87,177 +243,420 @@ class _TransactionsListScreenState extends State<TransactionsListScreen> {
       return true;
     }).toList();
 
-    // Sort by date (newest first)
-    filteredTransactions.sort((a, b) => b.date.compareTo(a.date));
+    // Apply sorting
+    filteredTransactions.sort((a, b) {
+      if (_sortBy == 'date') {
+        return _sortAscending
+            ? a.date.compareTo(b.date)
+            : b.date.compareTo(a.date);
+      } else if (_sortBy == 'amount') {
+        return _sortAscending
+            ? a.amount.compareTo(b.amount)
+            : b.amount.compareTo(a.amount);
+      } else if (_sortBy == 'name') {
+        return _sortAscending
+            ? a.title.compareTo(b.title)
+            : b.title.compareTo(a.title);
+      }
+      return b.date.compareTo(a.date); // Default sort by date (newest first)
+    });
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: primaryColor,
-        title: const Text('All Transactions'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: _showFilterDialog,
+      backgroundColor: Colors.grey.shade50,
+      body: NestedScrollView(
+        headerSliverBuilder: (context, innerBoxIsScrolled) {
+          return [
+            SliverAppBar(
+              backgroundColor: primaryColor,
+              title: const Text('Transactions'),
+              pinned: true,
+              floating: true,
+              leading: IconButton(
+                icon: Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              actions: [
+                // Sort button
+                IconButton(
+                  icon: Icon(Icons.sort),
+                  onPressed: _showSortingPopup,
+                  tooltip: 'Sort Transactions',
+                ),
+              ],
+              bottom: PreferredSize(
+                preferredSize: Size.fromHeight(70),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: _buildModernSearchBar(),
+                ),
+              ),
+            ),
+          ];
+        },
+        body: CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            // Current sort order indicator
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Row(
+                  children: [
+                    Text(
+                      'Sorted by:',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    InkWell(
+                      onTap: _showSortingPopup,
+                      child: Container(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _sortBy == 'date'
+                                  ? 'Date'
+                                  : _sortBy == 'amount'
+                                      ? 'Amount'
+                                      : 'Name',
+                              style: TextStyle(
+                                color: primaryColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            SizedBox(width: 4),
+                            Icon(
+                              _sortAscending
+                                  ? Icons.arrow_upward
+                                  : Icons.arrow_downward,
+                              size: 14,
+                              color: primaryColor,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Filter chips
+            SliverToBoxAdapter(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    _buildFilterChip(
+                      label: 'Expenses',
+                      isSelected: _showExpenses,
+                      onTap: () {
+                        setState(() {
+                          _showExpenses = !_showExpenses;
+                        });
+                      },
+                      color: Colors.red,
+                    ),
+                    const SizedBox(width: 10),
+                    _buildFilterChip(
+                      label: 'Income',
+                      isSelected: _showIncome,
+                      onTap: () {
+                        setState(() {
+                          _showIncome = !_showIncome;
+                        });
+                      },
+                      color: Colors.green,
+                    ),
+                    const SizedBox(width: 10),
+                    if (_startDate != null && _endDate != null)
+                      _buildFilterChip(
+                        label:
+                            '${DateFormat('MMM d').format(_startDate!)} - ${DateFormat('MMM d').format(_endDate!)}',
+                        isSelected: true,
+                        onTap: () {
+                          setState(() {
+                            _startDate = null;
+                            _endDate = null;
+                          });
+                        },
+                        color: primaryColor,
+                        showCloseIcon: true,
+                      ),
+                    if (_selectedCategoryIds.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 10),
+                        child: _buildFilterChip(
+                          label: '${_selectedCategoryIds.length} categories',
+                          isSelected: true,
+                          onTap: () {
+                            setState(() {
+                              _selectedCategoryIds = [];
+                            });
+                          },
+                          color: Colors.amber.shade700,
+                          showCloseIcon: true,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Section header
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Text(
+                  'All Transactions',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+
+            // Transactions list
+            filteredTransactions.isEmpty
+                ? SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.receipt_long,
+                              size: 64, color: Colors.grey.shade400),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No transactions found',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          if (_searchQuery.isNotEmpty ||
+                              !_showExpenses ||
+                              !_showIncome ||
+                              _startDate != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(
+                                'Try changing your filters',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  )
+                : SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final transaction = filteredTransactions[index];
+                        final category = categoryProvider
+                            .getCategoryById(transaction.categoryId);
+
+                        // Group transactions by date
+                        final bool showDateHeader = index == 0 ||
+                            !isSameDay(filteredTransactions[index].date,
+                                filteredTransactions[index - 1].date);
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (showDateHeader)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                                child: Text(
+                                  DateFormat('EEEE, MMMM d, y')
+                                      .format(transaction.date),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey.shade700,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            _buildTransactionItem(
+                                context, transaction, category),
+                          ],
+                        );
+                      },
+                      childCount: filteredTransactions.length,
+                    ),
+                  ),
+
+            // Bottom padding
+            SliverToBoxAdapter(
+              child: SizedBox(height: 80),
+            ),
+          ],
+        ),
+      ),
+      // Main floating action button for adding transactions
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // Stats button
+          MouseRegion(
+            onEnter: (_) => _animationController.forward(),
+            onExit: (_) => _animationController.reverse(),
+            child: AnimatedBuilder(
+              animation: _animationController,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: _scaleAnimation.value,
+                  child: FloatingActionButton.small(
+                    heroTag: 'stats-button',
+                    onPressed: () {
+                      _animationController.reset();
+                      // Navigate to statistics screen
+                      Navigator.of(context).push(
+                        PageRouteBuilder(
+                          pageBuilder:
+                              (context, animation, secondaryAnimation) =>
+                                  StatisticsScreen(),
+                          transitionsBuilder:
+                              (context, animation, secondaryAnimation, child) {
+                            var tween = Tween(begin: 0.0, end: 1.0)
+                                .chain(CurveTween(curve: Curves.easeInOut));
+                            var fadeAnimation = animation.drive(tween);
+                            return FadeTransition(
+                                opacity: fadeAnimation, child: child);
+                          },
+                        ),
+                      );
+                    },
+                    backgroundColor: Colors.deepPurple.shade300,
+                    child: RotationTransition(
+                      turns: _rotationAnimation,
+                      child: Icon(Icons.insights, color: Colors.white),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          SizedBox(height: 16),
+          // Add transaction button
+          FloatingActionButton(
+            heroTag: 'add-button',
+            onPressed: () {
+              // Add new transaction
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => AddTransactionScreen(isExpense: true),
+                ),
+              );
+            },
+            backgroundColor: primaryColor,
+            child: const Icon(Icons.add, color: Colors.white),
           ),
         ],
       ),
-      body: Column(
+    );
+  }
+
+  Widget _buildModernSearchBar() {
+    return Container(
+      height: 50,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
         children: [
-          // Search bar
+          // Search icon
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.only(left: 16),
+            child: Icon(
+              Icons.search,
+              color: Colors.grey.shade600,
+              size: 20,
+            ),
+          ),
+
+          // TextField
+          Expanded(
             child: TextField(
               controller: _searchController,
+              focusNode: _searchFocusNode,
               decoration: InputDecoration(
                 hintText: 'Search transactions...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                hintStyle: TextStyle(
+                  color: Colors.grey.shade500,
+                  fontSize: 15,
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
               onChanged: (value) {
                 setState(() {
                   _searchQuery = value;
                 });
               },
+              style: TextStyle(fontSize: 15),
             ),
           ),
 
-          // Filter chips
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                FilterChip(
-                  label: Text('Expenses'),
-                  selected: _showExpenses,
-                  onSelected: (selected) {
-                    setState(() {
-                      _showExpenses = selected;
-                    });
-                  },
-                  selectedColor: Colors.red.withOpacity(0.2),
-                  checkmarkColor: Colors.red,
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: Text('Income'),
-                  selected: _showIncome,
-                  onSelected: (selected) {
-                    setState(() {
-                      _showIncome = selected;
-                    });
-                  },
-                  selectedColor: Colors.green.withOpacity(0.2),
-                  checkmarkColor: Colors.green,
-                ),
-                const SizedBox(width: 8),
-                if (_startDate != null && _endDate != null)
-                  Chip(
-                    label: Text(
-                      '${DateFormat('MMM d').format(_startDate!)} - ${DateFormat('MMM d').format(_endDate!)}',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    deleteIcon: Icon(Icons.close, size: 18),
-                    onDeleted: () {
-                      setState(() {
-                        _startDate = null;
-                        _endDate = null;
-                      });
-                    },
-                  ),
-                if (_selectedCategoryIds.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  Chip(
-                    label: Text(
-                      '${_selectedCategoryIds.length} categories',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    deleteIcon: Icon(Icons.close, size: 18),
-                    onDeleted: () {
-                      setState(() {
-                        _selectedCategoryIds = [];
-                      });
-                    },
-                  ),
-                ],
-              ],
+          // Clear button (only shown when there's text)
+          if (_searchQuery.isNotEmpty)
+            IconButton(
+              icon: Icon(
+                Icons.clear,
+                color: Colors.grey.shade600,
+                size: 20,
+              ),
+              onPressed: () {
+                setState(() {
+                  _searchController.clear();
+                  _searchQuery = '';
+                });
+              },
+              splashRadius: 20,
             ),
+
+          // Divider
+          Container(
+            height: 24,
+            width: 1,
+            color: Colors.grey.shade300,
           ),
 
-          const SizedBox(height: 8),
-
-          // Transactions list
-          Expanded(
-            child: filteredTransactions.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.receipt_long,
-                            size: 64, color: Colors.grey.shade400),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No transactions found',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                        if (_searchQuery.isNotEmpty ||
-                            !_showExpenses ||
-                            !_showIncome ||
-                            _startDate != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8.0),
-                            child: Text(
-                              'Try changing your filters',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    itemCount: filteredTransactions.length,
-                    itemBuilder: (context, index) {
-                      final transaction = filteredTransactions[index];
-                      final category = categoryProvider
-                          .getCategoryById(transaction.categoryId);
-
-                      // Group transactions by date
-                      final bool showDateHeader = index == 0 ||
-                          !isSameDay(filteredTransactions[index].date,
-                              filteredTransactions[index - 1].date);
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (showDateHeader)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                              child: Text(
-                                DateFormat('EEEE, MMMM d, y')
-                                    .format(transaction.date),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey.shade700,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                          _buildTransactionItem(context, transaction, category),
-                        ],
-                      );
-                    },
-                  ),
+          // Filter button
+          IconButton(
+            icon: Icon(
+              Icons.filter_list,
+              color: Colors.grey.shade700,
+              size: 20,
+            ),
+            onPressed: _showFilterDialog,
+            tooltip: 'Filter Transactions',
           ),
         ],
       ),
@@ -481,6 +880,19 @@ class _TransactionsListScreenState extends State<TransactionsListScreen> {
     );
   }
 
+  // Navigate to edit transaction screen
+  void _navigateToEditTransaction(
+      BuildContext context, TransactionModel transaction) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AddTransactionScreen(
+          isExpense: transaction.isExpense,
+          transactionToEdit: transaction,
+        ),
+      ),
+    );
+  }
+
   // Show filter dialog for date range selection
   void _showFilterDialog() {
     // Store temporary filter selections
@@ -668,61 +1080,6 @@ class _TransactionsListScreenState extends State<TransactionsListScreen> {
                               color: Colors.grey.shade800,
                             ),
                           ),
-                          const SizedBox(height: 16),
-
-                          // Quick date selectors
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                _buildDateRangeChip(
-                                  'Today',
-                                  () {
-                                    final now = DateTime.now();
-                                    setState(() {
-                                      tempStartDate = DateTime(
-                                          now.year, now.month, now.day);
-                                      tempEndDate = DateTime(
-                                          now.year, now.month, now.day);
-                                    });
-                                  },
-                                  isSelected:
-                                      _isToday(tempStartDate, tempEndDate),
-                                ),
-                                const SizedBox(width: 8),
-                                _buildDateRangeChip(
-                                  'Last 7 days',
-                                  () {
-                                    final now = DateTime.now();
-                                    setState(() {
-                                      tempStartDate = DateTime(
-                                          now.year, now.month, now.day - 6);
-                                      tempEndDate = DateTime(
-                                          now.year, now.month, now.day);
-                                    });
-                                  },
-                                  isSelected:
-                                      _isLast7Days(tempStartDate, tempEndDate),
-                                ),
-                                const SizedBox(width: 8),
-                                _buildDateRangeChip(
-                                  'This Month',
-                                  () {
-                                    final now = DateTime.now();
-                                    setState(() {
-                                      tempStartDate =
-                                          DateTime(now.year, now.month, 1);
-                                      tempEndDate =
-                                          DateTime(now.year, now.month + 1, 0);
-                                    });
-                                  },
-                                  isSelected:
-                                      _isThisMonth(tempStartDate, tempEndDate),
-                                ),
-                              ],
-                            ),
-                          ),
-
                           const SizedBox(height: 16),
 
                           // Custom date range
@@ -1024,32 +1381,6 @@ class _TransactionsListScreenState extends State<TransactionsListScreen> {
     );
   }
 
-  // Helper widget for date range quick selectors
-  Widget _buildDateRangeChip(String label, VoidCallback onTap,
-      {bool isSelected = false}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? primaryColor : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? primaryColor : Colors.grey.shade300,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: isSelected ? Colors.white : Colors.grey.shade800,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          ),
-        ),
-      ),
-    );
-  }
-
   // Helper methods to check date ranges
   bool _isToday(DateTime? start, DateTime? end) {
     if (start == null || end == null) return false;
@@ -1075,15 +1406,28 @@ class _TransactionsListScreenState extends State<TransactionsListScreen> {
         end.isAtSameMomentAs(lastDayOfMonth);
   }
 
-  // Navigate to edit transaction screen
-  void _navigateToEditTransaction(
-      BuildContext context, TransactionModel transaction) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => AddTransactionScreen(
-          isExpense: transaction.isExpense,
-          transactionToEdit: transaction,
+  Widget _buildFilterChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required Color color,
+    bool showCloseIcon = false,
+  }) {
+    return FilterChip(
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isSelected ? Colors.white : Colors.black87,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         ),
+      ),
+      selected: isSelected,
+      onSelected: (_) => onTap(),
+      selectedColor: color,
+      checkmarkColor: Colors.white,
+      backgroundColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../screens/export_screen.dart';
+import '../screens/transactions/transactions_list_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({Key? key}) : super(key: key);
@@ -97,16 +98,43 @@ class AppDrawer extends StatelessWidget {
                   icon: Icons.home_outlined,
                   title: 'Home',
                   isSelected: true,
+                  routeName: '/home',
                 ),
                 _buildMenuItem(
                   context,
                   icon: Icons.receipt_long_outlined,
                   title: 'Transactions',
+                  onTap: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (context) => const TransactionsListScreen(),
+                      ),
+                    );
+                  },
+                ),
+                _buildMenuItem(
+                  context,
+                  icon: Icons.insert_chart_outlined,
+                  title: 'Statistics',
+                  onTap: () {
+                    Navigator.of(context).pushReplacement(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            const TransactionsListScreen(),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) {
+                          return FadeTransition(
+                              opacity: animation, child: child);
+                        },
+                      ),
+                    );
+                  },
                 ),
                 _buildMenuItem(
                   context,
                   icon: Icons.pie_chart_outline_outlined,
                   title: 'Budget',
+                  routeName: '/budget',
                 ),
                 _buildMenuItem(
                   context,

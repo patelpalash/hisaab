@@ -397,12 +397,23 @@ class _HomePageState extends State<HomePage> {
                     Padding(
                       padding: const EdgeInsets.only(
                           left: 16.0, right: 16.0, top: 24.0, bottom: 12.0),
-                      child: FinancialSummaryChart(
-                        income: totalIncome,
-                        expense: totalExpenses,
-                        balance: balance,
-                        accounts:
-                            Provider.of<AccountProvider>(context).accounts,
+                      child: InkWell(
+                        onTap: () {
+                          // Navigate to transactions screen with statistics
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => TransactionsListScreen(),
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: FinancialSummaryChart(
+                          income: totalIncome,
+                          expense: totalExpenses,
+                          balance: balance,
+                          accounts:
+                              Provider.of<AccountProvider>(context).accounts,
+                        ),
                       ),
                     ),
 
@@ -419,8 +430,8 @@ class _HomePageState extends State<HomePage> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          TextButton(
-                            onPressed: () {
+                          InkWell(
+                            onTap: () {
                               // View all transactions
                               Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -429,11 +440,29 @@ class _HomePageState extends State<HomePage> {
                                 ),
                               );
                             },
-                            child: Text(
-                              'View All',
-                              style: TextStyle(
-                                color: lightPurple,
-                                fontWeight: FontWeight.w600,
+                            child: Container(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: lightPurple.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    'View All',
+                                    style: TextStyle(
+                                      color: lightPurple,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  SizedBox(width: 4),
+                                  Icon(
+                                    Icons.arrow_forward,
+                                    color: lightPurple,
+                                    size: 16,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -520,7 +549,7 @@ class _HomePageState extends State<HomePage> {
             // Navigate to screens based on index
             if (index == 1) {
               // Transactions tab
-              Navigator.of(context).push(
+              Navigator.of(context).pushReplacement(
                 MaterialPageRoute(
                   builder: (context) => TransactionsListScreen(),
                 ),
